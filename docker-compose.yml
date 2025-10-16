@@ -1,0 +1,104 @@
+version: '3.8'
+
+services:
+  app:
+    container_name: buk_app
+    build:
+      context: ./docker_config/app
+      dockerfile: Dockerfile-dev
+      args:
+        UID: ${UID:-1000}
+        GID: ${GID:-1000}
+        USER: buk
+    ports:
+      - "7400:8000"
+    volumes:
+      - .:/var/www/html
+      - ./docker_config/supervisor/supervisord.conf:/etc/supervisor/conf.d/supervisord.conf
+    environment:
+      - APP_NAME=AuthService
+      - APP_ENV=local
+      - APP_DEBUG=true
+      - DB_CONNECTION_OPERATIONAL=pgsql
+      - DB_HOST_OPERATIONAL=operational_db
+      - DB_PORT_OPERATIONAL=5432
+      - DB_DATABASE_OPERATIONAL=operational
+      - DB_USERNAME_OPERATIONAL=postgres
+      - DB_PASSWORD_OPERATIONAL=postgres
+      - DB_CONNECTION_AUDIT=pgsql
+      - DB_HOST_AUDIT=postgres
+      - DB_PORT_AUDIT=5432
+      - DB_DATABASE_AUDIT=operational
+      - DB_USERNAME_AUDIT=postgres
+      - DB_PASSWORD_AUDIT=postgres
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - XDEBUG_MODE=debug
+      - XDEBUG_CONFIG=client_host=host.docker.internal client_port=40625
+      - PHP_IDE_CONFIG=serverName=BukSac
+    depends_on:
+      operational_db:
+        condition: service_healthy
+      audit_db:
+        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - buk_network
+    restart: unless-stopped
+
+  operational_db:
+    build:
+      context: ./docker_config/database/operational
+      dockerfile: Dockerfile.operational
+    container_name: buk_operational_db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: operational
+    ports:
+      - "7500:5432"
+    volumes:
+      - operational_data:/var/lib/postgresql/data
+      - ./storage/app/seeds:/var/www/html/storage/app/seeds
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - buk_network
+    restart: unless-stopped
+
+  audit_db:
+    build:
+      context: ./docker_config/database/audit
+      dockerfile: Dockerfile.audit
+    container_name: buk_audit_db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: audit
+    ports:
+      - "7501:5432"
+    volumes:
+      - audit_data:/var/lib/postgresql/data
+      - ./storage/app/seeds:/var/www/html/storage/app/seeds
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - buk_network
+    restart: unless-stopped
+
+networks:
+  buk_network:
+    driver: bridge
+
+volumes:
+  operational_data:
+    name: buk_operational_data
+  audit_data:
+    name: buk_audit_data

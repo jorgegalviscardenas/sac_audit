@@ -1,0 +1,88 @@
+FROM php:8.4-cli
+
+# Argumentos para el usuario
+ARG UID=1000
+ARG GID=1000
+ARG USER=laravel
+
+# Instalar dependencias del sistema incluyendo Supervisor
+RUN apt-get update && apt-get install -y \
+    git \
+    curl \
+    libpng-dev \
+    libonig-dev \
+    libxml2-dev \
+    libzip-dev \
+    libpq-dev \
+    librabbitmq-dev \
+    libssh-dev \
+    zip \
+    unzip \
+    sudo \
+    supervisor \
+    telnet \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Crear grupo y usuario
+RUN groupadd -g ${GID} ${USER} \
+    && useradd -u ${UID} -g ${USER} -m -s /bin/bash ${USER} \
+    && echo "${USER} ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+
+# Instalar extensiones de PHP
+RUN docker-php-ext-install \
+    pdo_pgsql \
+    pgsql \
+    mbstring \
+    exif \
+    pcntl \
+    bcmath \
+    gd \
+    zip \
+    sockets
+
+# Instalar Redis extension
+RUN pecl install redis \
+    && docker-php-ext-enable redis
+
+# Instalar AMQP extension para RabbitMQ
+RUN pecl install amqp \
+    && docker-php-ext-enable amqp
+
+# Instalar Xdebug
+RUN pecl install xdebug \
+    && docker-php-ext-enable xdebug
+
+# Configurar Xdebug
+RUN echo "xdebug.mode=debug" >> /usr/local/etc/php/conf.d/docker-php-ext-xdebug.ini \
+    && echo "xdebug.start_with_request=yes" >> /usr/local/etc/php/conf.d/docker-php-ext-xdebug.ini \
+    && echo "xdebug.client_host=host.docker.internal" >> /usr/local/etc/php/conf.d/docker-php-ext-xdebug.ini \
+    && echo "xdebug.client_port=40625" >> /usr/local/etc/php/conf.d/docker-php-ext-xdebug.ini \
+    && echo "xdebug.log=/tmp/xdebug.log" >> /usr/local/etc/php/conf.d/docker-php-ext-xdebug.ini
+
+# Configuración de PHP para desarrollo
+RUN echo "memory_limit=5G" >> /usr/local/etc/php/conf.d/custom.ini \
+    && echo "upload_max_filesize=50M" >> /usr/local/etc/php/conf.d/custom.ini \
+    && echo "post_max_size=50M" >> /usr/local/etc/php/conf.d/custom.ini
+
+# Instalar Composer
+COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
+
+# Crear directorios para logs de Supervisor
+RUN mkdir -p /var/log/supervisor
+
+WORKDIR /var/www/html
+
+# Cambiar al usuario creado
+USER ${USER}
+
+# Copiar archivos del proyecto
+COPY --chown=${USER}:${USER} . .
+
+# Ajustar permisos
+USER root
+RUN chown -R ${USER}:${USER} /var/www/html \
+    && chmod -R 775 storage bootstrap/cache 2>/dev/null || true
+
+# Comando por defecto: Supervisor
+CMD ["/usr/bin/supervisord", "-n", "-c", "/etc/supervisor/conf.d/supervisord.conf"]

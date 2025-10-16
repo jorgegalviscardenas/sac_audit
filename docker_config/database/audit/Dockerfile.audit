@@ -1,0 +1,9 @@
+FROM postgres:18
+
+RUN apt-get update && \
+    apt-get install -y net-tools && \
+    rm -rf /var/lib/apt/lists/*
+
+COPY postgresql.audit.conf /etc/postgresql/postgresql.conf
+
+CMD ["postgres", "-c", "config_file=/etc/postgresql/postgresql.conf"]
