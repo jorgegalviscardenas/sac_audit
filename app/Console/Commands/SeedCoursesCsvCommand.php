@@ -3,12 +3,12 @@
 namespace App\Console\Commands;
 
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 class SeedCoursesCsvCommand extends Command
 {
     use CsvSeedCommandTrait;
+
     /**
      * The name and signature of the console command.
      *
@@ -18,15 +18,14 @@ class SeedCoursesCsvCommand extends Command
                             {count=100 : The number of courses to create}
                             {--tenant= : The tenant UUID (required)}
                             {--start-date= : Start date for records (Y-m-d format)}
-                            {--end-date= : End date for records (Y-m-d format)}
-                            {--keep-csv : Keep the CSV file after import}';
+                            {--end-date= : End date for records (Y-m-d format)}';
 
     /**
      * The console command description.
      *
      * @var string
      */
-    protected $description = 'Seed courses and course audit tables using CSV import (very fast for large datasets)';
+    protected $description = 'Seed courses and course audit tables using bulk inserts (optimized for large datasets)';
 
     /**
      * Execute the console command.
@@ -37,16 +36,17 @@ class SeedCoursesCsvCommand extends Command
         $tenantId = $this->option('tenant');
         $startDate = $this->option('start-date');
         $endDate = $this->option('end-date');
-        $keepCsv = $this->option('keep-csv');
 
-        if (!$tenantId) {
+        if (! $tenantId) {
             $this->error('Please provide a tenant UUID using --tenant option');
+
             return Command::FAILURE;
         }
 
         // Validate tenant exists
-        if (!$this->validateTenant($tenantId)) {
+        if (! $this->validateTenant($tenantId)) {
             $this->error("Tenant with ID {$tenantId} does not exist");
+
             return Command::FAILURE;
         }
 
@@ -55,53 +55,49 @@ class SeedCoursesCsvCommand extends Command
             $distribution = $this->calculateMonthlyDistribution($count, $startDate, $endDate);
         } catch (\InvalidArgumentException $e) {
             $this->error($e->getMessage());
+
             return Command::FAILURE;
         }
 
         // Display distribution info
         if ($startDate && $endDate) {
-            $this->info("Distributing {$count} courses across " . count($distribution) . " month(s):");
+            $this->info("Distributing {$count} courses across ".count($distribution).' month(s):');
             foreach ($distribution as $period) {
                 $this->info("  - {$period['start']->format('Y-m-d')} to {$period['end']->format('Y-m-d')}: {$period['count']} records");
             }
         }
 
-        $coursesCsvPath = $this->generateCsvPath('courses');
-        $auditCsvPath = $this->generateCsvPath('course_audit');
-
-        $this->info("Generating CSV files with {$count} courses and " . ($count * 7) . " audit records...");
+        $this->info("Generating and inserting {$count} courses and ".($count * 7).' audit records...');
         $progressBar = $this->output->createProgressBar($count);
         $progressBar->start();
 
-        // Generate CSV files
-        $coursesFile = fopen($coursesCsvPath, 'w');
-        $auditFile = fopen($auditCsvPath, 'w');
-
         $recordIndex = 0;
 
-        // Generate courses and audit records simultaneously to save memory
+        // Generate and insert courses and audit records per period
         foreach ($distribution as $period) {
+            $courses = [];
+            $audits = [];
+
             for ($i = 0; $i < $period['count']; $i++) {
                 $courseId = Str::uuid();
                 $timestamp = $this->generateRandomTimestamp($period['start'], $period['end']);
-                $courseTitle = $this->generateCourseTitle() . " " . $recordIndex;
-                $courseDescription = "Description for " . $courseTitle;
+                $courseTitle = $this->generateCourseTitle().' '.$recordIndex;
+                $courseDescription = 'Description for '.$courseTitle;
 
-                // Write course record
-                fputcsv($coursesFile, [
+                // Collect course record
+                $courses[] = [
                     $courseId,
                     $tenantId,
                     $courseTitle,
                     $courseDescription,
                     $timestamp->format('Y-m-d H:i:s'),
                     $timestamp->format('Y-m-d H:i:s'),
-                ]);
+                ];
 
-                // Write audit records immediately
-                $transactionHash = hash('sha256', $courseId . time() . $recordIndex);
+                $transactionHash = hash('sha256', $courseId.time().$recordIndex);
 
                 // 1 CREATE audit
-                fputcsv($auditFile, [
+                $audits[] = [
                     $tenantId,
                     $courseId,
                     1, // type: CREATE
@@ -114,21 +110,21 @@ class SeedCoursesCsvCommand extends Command
                             'description' => $courseDescription,
                             'created_at' => $timestamp->format('Y-m-d H:i:s'),
                             'updated_at' => $timestamp->format('Y-m-d H:i:s'),
-                        ]
+                        ],
                     ]),
-                    $transactionHash . '_create',
+                    $transactionHash.'_create',
                     $courseId,
-                    "System User",
+                    'System User',
                     $timestamp->format('Y-m-d H:i:s'),
-                ]);
+                ];
 
                 // 6 UPDATE audits (spread over time after creation)
                 for ($j = 1; $j <= 6; $j++) {
                     $updateTime = $timestamp->copy()->addSeconds($j * 3600);
-                    $oldDescription = $j === 1 ? $courseDescription : $courseDescription . ' v' . ($j - 1);
-                    $newDescription = $courseDescription . ' v' . $j;
+                    $oldDescription = $j === 1 ? $courseDescription : $courseDescription.' v'.($j - 1);
+                    $newDescription = $courseDescription.' v'.$j;
 
-                    fputcsv($auditFile, [
+                    $audits[] = [
                         $tenantId,
                         $courseId,
                         2, // type: UPDATE
@@ -146,13 +142,13 @@ class SeedCoursesCsvCommand extends Command
                                 'title' => $courseTitle,
                                 'description' => $newDescription,
                                 'updated_at' => $updateTime->format('Y-m-d H:i:s'),
-                            ]
+                            ],
                         ]),
-                        $transactionHash . '_update_' . $j,
+                        $transactionHash.'_update_'.$j,
                         $courseId,
-                        "System User",
+                        'System User',
                         $updateTime->format('Y-m-d H:i:s'),
-                    ]);
+                    ];
                 }
 
                 $recordIndex++;
@@ -161,6 +157,22 @@ class SeedCoursesCsvCommand extends Command
                     $progressBar->advance(10000);
                 }
             }
+
+            // Bulk insert for this period
+            if (! $this->bulkInsert('courses', ['id', 'tenant_id', 'title', 'description', 'created_at', 'updated_at'], $courses)) {
+                $progressBar->finish();
+
+                return Command::FAILURE;
+            }
+
+            if (! $this->bulkInsert('course_audits', ['tenant_id', 'object_id', 'type', 'diffs', 'transaction_hash', 'blame_id', 'blame_user', 'created_at'], $audits)) {
+                $progressBar->finish();
+
+                return Command::FAILURE;
+            }
+
+            // Clear arrays to free memory
+            unset($courses, $audits);
         }
 
         // Advance progress bar for remaining records
@@ -168,40 +180,12 @@ class SeedCoursesCsvCommand extends Command
             $progressBar->advance($recordIndex % 10000);
         }
 
-        fclose($coursesFile);
-        fclose($auditFile);
         $progressBar->finish();
         $this->newLine();
 
-        $this->displayFileSize($coursesCsvPath, 'Courses');
-        $this->displayFileSize($auditCsvPath, 'Audit');
-
-        // Import using COPY command
-        $this->info("Importing courses using PostgreSQL COPY...");
-
-        if (!$this->importCsvWithCopy('courses', 'id, tenant_id, title, description, created_at, updated_at', $coursesCsvPath)) {
-            $this->cleanupCsvFiles([$coursesCsvPath, $auditCsvPath], $keepCsv);
-            return Command::FAILURE;
-        }
-
-        $this->newLine();
-        $this->info("Successfully imported {$count} courses!");
+        $this->info("Successfully inserted {$count} courses and ".($count * 7).' audit records!');
         $this->displayTableCount('courses', $tenantId);
-
-        // Import audit records
-        $this->info("Importing course audit records using PostgreSQL COPY...");
-
-        if (!$this->importCsvWithCopy('course_audits', 'tenant_id, object_id, type, diffs, transaction_hash, blame_id, blame_user, created_at', $auditCsvPath)) {
-            $this->cleanupCsvFiles([$coursesCsvPath, $auditCsvPath], $keepCsv);
-            return Command::FAILURE;
-        }
-
-        $this->newLine();
-        $this->info("Successfully imported " . ($count * 7) . " audit records!");
         $this->displayTableCount('course_audits', $tenantId, 'course audit records');
-
-        // Clean up CSV files
-        $this->cleanupCsvFiles([$coursesCsvPath, $auditCsvPath], $keepCsv, ['Courses', 'Audit']);
 
         return Command::SUCCESS;
     }

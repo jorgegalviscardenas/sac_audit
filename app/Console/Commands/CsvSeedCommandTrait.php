@@ -12,14 +12,14 @@ trait CsvSeedCommandTrait
      */
     protected function calculateMonthlyDistribution(int $totalCount, ?string $startDate, ?string $endDate): array
     {
-        if (!$startDate || !$endDate) {
+        if (! $startDate || ! $endDate) {
             // No date range specified, return all records for current time
             return [
                 [
                     'count' => $totalCount,
                     'start' => now(),
                     'end' => now(),
-                ]
+                ],
             ];
         }
 
@@ -28,7 +28,7 @@ trait CsvSeedCommandTrait
 
         // Validate dates
         if ($start->greaterThan($end)) {
-            throw new \InvalidArgumentException("Start date must be before end date");
+            throw new \InvalidArgumentException('Start date must be before end date');
         }
 
         // Calculate months between dates
@@ -97,6 +97,7 @@ trait CsvSeedCommandTrait
 
         return Carbon::createFromTimestamp($randomTimestamp);
     }
+
     /**
      * Validate that a tenant exists in the operational database
      */
@@ -109,36 +110,34 @@ trait CsvSeedCommandTrait
     }
 
     /**
-     * Generate CSV file path with timestamp
+     * Bulk insert records using raw SQL for optimal performance
      */
-    protected function generateCsvPath(string $prefix): string
-    {
-        return storage_path('app/seeds/' . $prefix . '_seed_' . time() . '.csv');
-    }
-
-    /**
-     * Display file size information
-     */
-    protected function displayFileSize(string $path, string $label): void
-    {
-        $fileSize = round(filesize($path) / 1024 / 1024, 2);
-        $this->info("{$label} CSV file generated: {$path} ({$fileSize} MB)");
-    }
-
-    /**
-     * Import CSV file using PostgreSQL COPY command
-     */
-    protected function importCsvWithCopy(string $tableName, string $columns, string $csvPath): bool
+    protected function bulkInsert(string $tableName, array $columns, array $records, int $chunkSize = 1000): bool
     {
         try {
-            DB::connection('operational')->statement("
-                COPY {$tableName} ({$columns})
-                FROM '{$csvPath}'
-                WITH (FORMAT csv)
-            ");
+            $chunks = array_chunk($records, $chunkSize);
+            $columnList = implode(', ', $columns);
+
+            foreach ($chunks as $chunk) {
+                $placeholders = [];
+                $values = [];
+
+                foreach ($chunk as $record) {
+                    $recordPlaceholders = array_fill(0, count($record), '?');
+                    $placeholders[] = '('.implode(', ', $recordPlaceholders).')';
+                    $values = array_merge($values, array_values($record));
+                }
+
+                $placeholderString = implode(', ', $placeholders);
+                $sql = "INSERT INTO {$tableName} ({$columnList}) VALUES {$placeholderString}";
+
+                DB::connection('operational')->statement($sql, $values);
+            }
+
             return true;
         } catch (\Exception $e) {
-            $this->error("Failed to import {$tableName} CSV: " . $e->getMessage());
+            $this->error("Failed to bulk insert into {$tableName}: ".$e->getMessage());
+
             return false;
         }
     }
@@ -146,7 +145,7 @@ trait CsvSeedCommandTrait
     /**
      * Verify and display count for a table
      */
-    protected function displayTableCount(string $tableName, string $tenantId = null, string $label = null): void
+    protected function displayTableCount(string $tableName, ?string $tenantId = null, ?string $label = null): void
     {
         $query = DB::connection('operational')->table($tableName);
 
@@ -165,37 +164,16 @@ trait CsvSeedCommandTrait
     }
 
     /**
-     * Clean up CSV files
-     */
-    protected function cleanupCsvFiles(array $files, bool $keepCsv, array $labels = []): void
-    {
-        if (!$keepCsv) {
-            foreach ($files as $file) {
-                if (file_exists($file)) {
-                    unlink($file);
-                }
-            }
-            $this->info("CSV files deleted");
-        } else {
-            $this->info("CSV files kept at:");
-            foreach ($files as $index => $file) {
-                $label = $labels[$index] ?? "File " . ($index + 1);
-                $this->info("- {$label}: {$file}");
-            }
-        }
-    }
-
-    /**
      * Generate a random name
      */
     protected function generateRandomName(): string
     {
         $firstNames = ['John', 'Jane', 'Michael', 'Sarah', 'David', 'Emily', 'James', 'Emma', 'Robert', 'Olivia',
-                       'William', 'Ava', 'Richard', 'Isabella', 'Joseph', 'Sophia', 'Thomas', 'Mia', 'Charles', 'Charlotte'];
+            'William', 'Ava', 'Richard', 'Isabella', 'Joseph', 'Sophia', 'Thomas', 'Mia', 'Charles', 'Charlotte'];
         $lastNames = ['Smith', 'Johnson', 'Williams', 'Brown', 'Jones', 'Garcia', 'Miller', 'Davis', 'Rodriguez', 'Martinez',
-                      'Hernandez', 'Lopez', 'Gonzalez', 'Wilson', 'Anderson', 'Thomas', 'Taylor', 'Moore', 'Jackson', 'Martin'];
+            'Hernandez', 'Lopez', 'Gonzalez', 'Wilson', 'Anderson', 'Thomas', 'Taylor', 'Moore', 'Jackson', 'Martin'];
 
-        return $firstNames[array_rand($firstNames)] . ' ' . $lastNames[array_rand($lastNames)];
+        return $firstNames[array_rand($firstNames)].' '.$lastNames[array_rand($lastNames)];
     }
 
     /**
@@ -206,7 +184,7 @@ trait CsvSeedCommandTrait
         $adjectives = ['Global', 'Tech', 'Digital', 'Smart', 'Innovative', 'Advanced', 'Modern', 'Future', 'Elite', 'Prime'];
         $nouns = ['Systems', 'Solutions', 'Technologies', 'Enterprises', 'Industries', 'Corporation', 'Group', 'Partners', 'Services', 'Dynamics'];
 
-        return $adjectives[array_rand($adjectives)] . ' ' . $nouns[array_rand($nouns)];
+        return $adjectives[array_rand($adjectives)].' '.$nouns[array_rand($nouns)];
     }
 
     /**
@@ -216,8 +194,8 @@ trait CsvSeedCommandTrait
     {
         $subjects = ['Introduction to', 'Advanced', 'Complete', 'Mastering', 'Professional', 'Fundamentals of'];
         $topics = ['Web Development', 'Data Science', 'Machine Learning', 'Cloud Computing', 'Cybersecurity',
-                   'Mobile Development', 'DevOps', 'Blockchain', 'AI', 'Software Engineering'];
+            'Mobile Development', 'DevOps', 'Blockchain', 'AI', 'Software Engineering'];
 
-        return $subjects[array_rand($subjects)] . ' ' . $topics[array_rand($topics)];
+        return $subjects[array_rand($subjects)].' '.$topics[array_rand($topics)];
     }
 }

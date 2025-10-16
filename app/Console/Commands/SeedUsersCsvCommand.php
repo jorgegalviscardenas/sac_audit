@@ -3,12 +3,12 @@
 namespace App\Console\Commands;
 
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 class SeedUsersCsvCommand extends Command
 {
     use CsvSeedCommandTrait;
+
     /**
      * The name and signature of the console command.
      *
@@ -18,15 +18,14 @@ class SeedUsersCsvCommand extends Command
                             {count=100 : The number of users to create}
                             {--tenant= : The tenant UUID (required)}
                             {--start-date= : Start date for records (Y-m-d format)}
-                            {--end-date= : End date for records (Y-m-d format)}
-                            {--keep-csv : Keep the CSV file after import}';
+                            {--end-date= : End date for records (Y-m-d format)}';
 
     /**
      * The console command description.
      *
      * @var string
      */
-    protected $description = 'Seed users and user audit tables using CSV import (very fast for large datasets)';
+    protected $description = 'Seed users and user audit tables using bulk inserts (optimized for large datasets)';
 
     /**
      * Execute the console command.
@@ -37,16 +36,17 @@ class SeedUsersCsvCommand extends Command
         $tenantId = $this->option('tenant');
         $startDate = $this->option('start-date');
         $endDate = $this->option('end-date');
-        $keepCsv = $this->option('keep-csv');
 
-        if (!$tenantId) {
+        if (! $tenantId) {
             $this->error('Please provide a tenant UUID using --tenant option');
+
             return Command::FAILURE;
         }
 
         // Validate tenant exists
-        if (!$this->validateTenant($tenantId)) {
+        if (! $this->validateTenant($tenantId)) {
             $this->error("Tenant with ID {$tenantId} does not exist");
+
             return Command::FAILURE;
         }
 
@@ -55,55 +55,51 @@ class SeedUsersCsvCommand extends Command
             $distribution = $this->calculateMonthlyDistribution($count, $startDate, $endDate);
         } catch (\InvalidArgumentException $e) {
             $this->error($e->getMessage());
+
             return Command::FAILURE;
         }
 
         // Display distribution info
         if ($startDate && $endDate) {
-            $this->info("Distributing {$count} users across " . count($distribution) . " month(s):");
+            $this->info("Distributing {$count} users across ".count($distribution).' month(s):');
             foreach ($distribution as $period) {
                 $this->info("  - {$period['start']->format('Y-m-d')} to {$period['end']->format('Y-m-d')}: {$period['count']} records");
             }
         }
 
-        $usersCsvPath = $this->generateCsvPath('users');
-        $auditCsvPath = $this->generateCsvPath('user_audit');
-
-        $this->info("Generating CSV files with {$count} users and " . ($count * 7) . " audit records...");
+        $this->info("Generating and inserting {$count} users and ".($count * 7).' audit records...');
         $progressBar = $this->output->createProgressBar($count);
         $progressBar->start();
 
-        // Generate CSV files
-        $usersFile = fopen($usersCsvPath, 'w');
-        $auditFile = fopen($auditCsvPath, 'w');
-
         $recordIndex = 0;
 
-        // Generate users and audit records simultaneously to save memory
+        // Generate and insert users and audit records per period
         foreach ($distribution as $period) {
+            $users = [];
+            $audits = [];
+
             for ($i = 0; $i < $period['count']; $i++) {
                 $userId = Str::uuid();
                 $timestamp = $this->generateRandomTimestamp($period['start'], $period['end']);
-                $userName = "User " . $this->generateRandomName();
-                $userEmail = "user{$recordIndex}_" . uniqid() . "@example.com";
+                $userName = 'User '.$this->generateRandomName();
+                $userEmail = "user{$recordIndex}_".uniqid().'@example.com';
                 $isEnabled = (mt_rand(1, 100) <= 90);
 
-                // Write user record
-                fputcsv($usersFile, [
+                // Collect user record
+                $users[] = [
                     $userId,
                     $tenantId,
                     $userEmail,
                     $userName,
-                    $isEnabled ? 't' : 'f', // PostgreSQL boolean format
+                    $isEnabled,
                     $timestamp->format('Y-m-d H:i:s'),
                     $timestamp->format('Y-m-d H:i:s'),
-                ]);
+                ];
 
-                // Write audit records immediately
-                $transactionHash = hash('sha256', $userId . time() . $recordIndex);
+                $transactionHash = hash('sha256', $userId.time().$recordIndex);
 
                 // 1 CREATE audit
-                fputcsv($auditFile, [
+                $audits[] = [
                     $tenantId,
                     $userId,
                     1, // type: CREATE
@@ -117,21 +113,21 @@ class SeedUsersCsvCommand extends Command
                             'enabled' => $isEnabled,
                             'created_at' => $timestamp->format('Y-m-d H:i:s'),
                             'updated_at' => $timestamp->format('Y-m-d H:i:s'),
-                        ]
+                        ],
                     ]),
-                    $transactionHash . '_create',
+                    $transactionHash.'_create',
                     $userId,
-                    "System User",
+                    'System User',
                     $timestamp->format('Y-m-d H:i:s'),
-                ]);
+                ];
 
                 // 6 UPDATE audits (spread over time after creation)
                 for ($j = 1; $j <= 6; $j++) {
                     $updateTime = $timestamp->copy()->addSeconds($j * 3600);
-                    $oldEnabled = $j === 1 ? $isEnabled : !$isEnabled;
-                    $newEnabled = !$oldEnabled;
+                    $oldEnabled = $j === 1 ? $isEnabled : ! $isEnabled;
+                    $newEnabled = ! $oldEnabled;
 
-                    fputcsv($auditFile, [
+                    $audits[] = [
                         $tenantId,
                         $userId,
                         2, // type: UPDATE
@@ -151,13 +147,13 @@ class SeedUsersCsvCommand extends Command
                                 'full_name' => $userName,
                                 'enabled' => $newEnabled,
                                 'updated_at' => $updateTime->format('Y-m-d H:i:s'),
-                            ]
+                            ],
                         ]),
-                        $transactionHash . '_update_' . $j,
+                        $transactionHash.'_update_'.$j,
                         $userId,
-                        "System User",
+                        'System User',
                         $updateTime->format('Y-m-d H:i:s'),
-                    ]);
+                    ];
                 }
 
                 $recordIndex++;
@@ -166,6 +162,22 @@ class SeedUsersCsvCommand extends Command
                     $progressBar->advance(10000);
                 }
             }
+
+            // Bulk insert for this period
+            if (! $this->bulkInsert('users', ['id', 'tenant_id', 'email', 'full_name', 'enabled', 'created_at', 'updated_at'], $users)) {
+                $progressBar->finish();
+
+                return Command::FAILURE;
+            }
+
+            if (! $this->bulkInsert('user_audits', ['tenant_id', 'object_id', 'type', 'diffs', 'transaction_hash', 'blame_id', 'blame_user', 'created_at'], $audits)) {
+                $progressBar->finish();
+
+                return Command::FAILURE;
+            }
+
+            // Clear arrays to free memory
+            unset($users, $audits);
         }
 
         // Advance progress bar for remaining records
@@ -173,40 +185,12 @@ class SeedUsersCsvCommand extends Command
             $progressBar->advance($recordIndex % 10000);
         }
 
-        fclose($usersFile);
-        fclose($auditFile);
         $progressBar->finish();
         $this->newLine();
 
-        $this->displayFileSize($usersCsvPath, 'Users');
-        $this->displayFileSize($auditCsvPath, 'Audit');
-
-        // Import using COPY command
-        $this->info("Importing users using PostgreSQL COPY...");
-
-        if (!$this->importCsvWithCopy('users', 'id, tenant_id, email, full_name, enabled, created_at, updated_at', $usersCsvPath)) {
-            $this->cleanupCsvFiles([$usersCsvPath, $auditCsvPath], $keepCsv);
-            return Command::FAILURE;
-        }
-
-        $this->newLine();
-        $this->info("Successfully imported {$count} users!");
+        $this->info("Successfully inserted {$count} users and ".($count * 7).' audit records!');
         $this->displayTableCount('users', $tenantId);
-
-        // Import audit records
-        $this->info("Importing user audit records using PostgreSQL COPY...");
-
-        if (!$this->importCsvWithCopy('user_audits', 'tenant_id, object_id, type, diffs, transaction_hash, blame_id, blame_user, created_at', $auditCsvPath)) {
-            $this->cleanupCsvFiles([$usersCsvPath, $auditCsvPath], $keepCsv);
-            return Command::FAILURE;
-        }
-
-        $this->newLine();
-        $this->info("Successfully imported " . ($count * 7) . " audit records!");
         $this->displayTableCount('user_audits', $tenantId, 'user audit records');
-
-        // Clean up CSV files
-        $this->cleanupCsvFiles([$usersCsvPath, $auditCsvPath], $keepCsv, ['Users', 'Audit']);
 
         return Command::SUCCESS;
     }
