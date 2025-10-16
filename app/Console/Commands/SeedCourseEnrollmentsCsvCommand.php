@@ -9,6 +9,7 @@ use Illuminate\Support\Str;
 class SeedCourseEnrollmentsCsvCommand extends Command
 {
     use CsvSeedCommandTrait;
+
     /**
      * The name and signature of the console command.
      *
@@ -18,15 +19,14 @@ class SeedCourseEnrollmentsCsvCommand extends Command
                             {count=100 : The number of course enrollments to create}
                             {--tenant= : The tenant UUID (required)}
                             {--start-date= : Start date for records (Y-m-d format)}
-                            {--end-date= : End date for records (Y-m-d format)}
-                            {--keep-csv : Keep the CSV file after import}';
+                            {--end-date= : End date for records (Y-m-d format)}';
 
     /**
      * The console command description.
      *
      * @var string
      */
-    protected $description = 'Seed course enrollments and enrollment audit tables using CSV import (very fast for large datasets)';
+    protected $description = 'Seed course enrollments and enrollment audit tables using bulk inserts (optimized for large datasets)';
 
     /**
      * Execute the console command.
@@ -37,16 +37,17 @@ class SeedCourseEnrollmentsCsvCommand extends Command
         $tenantId = $this->option('tenant');
         $startDate = $this->option('start-date');
         $endDate = $this->option('end-date');
-        $keepCsv = $this->option('keep-csv');
 
-        if (!$tenantId) {
+        if (! $tenantId) {
             $this->error('Please provide a tenant UUID using --tenant option');
+
             return Command::FAILURE;
         }
 
         // Validate tenant exists
-        if (!$this->validateTenant($tenantId)) {
+        if (! $this->validateTenant($tenantId)) {
             $this->error("Tenant with ID {$tenantId} does not exist");
+
             return Command::FAILURE;
         }
 
@@ -65,11 +66,13 @@ class SeedCourseEnrollmentsCsvCommand extends Command
 
         if ($userCount === 0) {
             $this->error("No users found for tenant {$tenantId}. Please seed users first.");
+
             return Command::FAILURE;
         }
 
         if ($courseCount === 0) {
             $this->error("No courses found for tenant {$tenantId}. Please seed courses first.");
+
             return Command::FAILURE;
         }
 
@@ -95,39 +98,36 @@ class SeedCourseEnrollmentsCsvCommand extends Command
             ->pluck('id')
             ->toArray();
 
-        $this->info("Using sample of " . count($userIds) . " users and " . count($courseIds) . " courses for enrollments");
+        $this->info('Using sample of '.count($userIds).' users and '.count($courseIds).' courses for enrollments');
 
         // Calculate monthly distribution
         try {
             $distribution = $this->calculateMonthlyDistribution($count, $startDate, $endDate);
         } catch (\InvalidArgumentException $e) {
             $this->error($e->getMessage());
+
             return Command::FAILURE;
         }
 
         // Display distribution info
         if ($startDate && $endDate) {
-            $this->info("Distributing {$count} enrollments across " . count($distribution) . " month(s):");
+            $this->info("Distributing {$count} enrollments across ".count($distribution).' month(s):');
             foreach ($distribution as $period) {
                 $this->info("  - {$period['start']->format('Y-m-d')} to {$period['end']->format('Y-m-d')}: {$period['count']} records");
             }
         }
 
-        $enrollmentsCsvPath = $this->generateCsvPath('enrollments');
-        $auditCsvPath = $this->generateCsvPath('enrollment_audit');
-
-        $this->info("Generating CSV files with {$count} enrollments and " . ($count * 7) . " audit records...");
+        $this->info("Generating and inserting {$count} enrollments and ".($count * 7).' audit records...');
         $progressBar = $this->output->createProgressBar($count);
         $progressBar->start();
 
-        // Generate CSV files
-        $enrollmentsFile = fopen($enrollmentsCsvPath, 'w');
-        $auditFile = fopen($auditCsvPath, 'w');
-
         $recordIndex = 0;
 
-        // Generate enrollments and audit records simultaneously to save memory
+        // Generate and insert enrollments and audit records per period
         foreach ($distribution as $period) {
+            $enrollments = [];
+            $audits = [];
+
             for ($i = 0; $i < $period['count']; $i++) {
                 $enrollmentId = Str::uuid();
                 $timestamp = $this->generateRandomTimestamp($period['start'], $period['end']);
@@ -140,23 +140,22 @@ class SeedCourseEnrollmentsCsvCommand extends Command
                 $isCompleted = (mt_rand(1, 100) <= 70);
                 $enrolledAt = $timestamp->format('Y-m-d');
 
-                // Write enrollment record
-                fputcsv($enrollmentsFile, [
+                // Collect enrollment record
+                $enrollments[] = [
                     $enrollmentId,
                     $tenantId,
                     $userId,
                     $courseId,
                     $enrolledAt,
-                    $isCompleted ? 't' : 'f',
+                    $isCompleted,
                     $timestamp->format('Y-m-d H:i:s'),
                     $timestamp->format('Y-m-d H:i:s'),
-                ]);
+                ];
 
-                // Write audit records immediately
-                $transactionHash = hash('sha256', $enrollmentId . time() . $recordIndex);
+                $transactionHash = hash('sha256', $enrollmentId.time().$recordIndex);
 
                 // 1 CREATE audit
-                fputcsv($auditFile, [
+                $audits[] = [
                     $tenantId,
                     $enrollmentId,
                     1, // type: CREATE
@@ -171,21 +170,21 @@ class SeedCourseEnrollmentsCsvCommand extends Command
                             'is_completed' => $isCompleted,
                             'created_at' => $timestamp->format('Y-m-d H:i:s'),
                             'updated_at' => $timestamp->format('Y-m-d H:i:s'),
-                        ]
+                        ],
                     ]),
-                    $transactionHash . '_create',
+                    $transactionHash.'_create',
                     $enrollmentId,
-                    "System User",
+                    'System User',
                     $timestamp->format('Y-m-d H:i:s'),
-                ]);
+                ];
 
                 // 6 UPDATE audits (spread over time after creation) - toggling completion status
                 for ($j = 1; $j <= 6; $j++) {
                     $updateTime = $timestamp->copy()->addSeconds($j * 3600);
-                    $oldCompleted = $j % 2 === 1 ? $isCompleted : !$isCompleted;
-                    $newCompleted = !$oldCompleted;
+                    $oldCompleted = $j % 2 === 1 ? $isCompleted : ! $isCompleted;
+                    $newCompleted = ! $oldCompleted;
 
-                    fputcsv($auditFile, [
+                    $audits[] = [
                         $tenantId,
                         $enrollmentId,
                         2, // type: UPDATE
@@ -207,13 +206,13 @@ class SeedCourseEnrollmentsCsvCommand extends Command
                                 'enrolled_at' => $enrolledAt,
                                 'is_completed' => $newCompleted,
                                 'updated_at' => $updateTime->format('Y-m-d H:i:s'),
-                            ]
+                            ],
                         ]),
-                        $transactionHash . '_update_' . $j,
+                        $transactionHash.'_update_'.$j,
                         $enrollmentId,
-                        "System User",
+                        'System User',
                         $updateTime->format('Y-m-d H:i:s'),
-                    ]);
+                    ];
                 }
 
                 $recordIndex++;
@@ -222,6 +221,22 @@ class SeedCourseEnrollmentsCsvCommand extends Command
                     $progressBar->advance(10000);
                 }
             }
+
+            // Bulk insert for this period
+            if (! $this->bulkInsert('course_enrollments', ['id', 'tenant_id', 'user_id', 'course_id', 'enrolled_at', 'is_completed', 'created_at', 'updated_at'], $enrollments)) {
+                $progressBar->finish();
+
+                return Command::FAILURE;
+            }
+
+            if (! $this->bulkInsert('course_enrollment_audits', ['tenant_id', 'object_id', 'type', 'diffs', 'transaction_hash', 'blame_id', 'blame_user', 'created_at'], $audits)) {
+                $progressBar->finish();
+
+                return Command::FAILURE;
+            }
+
+            // Clear arrays to free memory
+            unset($enrollments, $audits);
         }
 
         // Advance progress bar for remaining records
@@ -229,40 +244,12 @@ class SeedCourseEnrollmentsCsvCommand extends Command
             $progressBar->advance($recordIndex % 10000);
         }
 
-        fclose($enrollmentsFile);
-        fclose($auditFile);
         $progressBar->finish();
         $this->newLine();
 
-        $this->displayFileSize($enrollmentsCsvPath, 'Enrollments');
-        $this->displayFileSize($auditCsvPath, 'Audit');
-
-        // Import using COPY command
-        $this->info("Importing enrollments using PostgreSQL COPY...");
-
-        if (!$this->importCsvWithCopy('course_enrollments', 'id, tenant_id, user_id, course_id, enrolled_at, is_completed, created_at, updated_at', $enrollmentsCsvPath)) {
-            $this->cleanupCsvFiles([$enrollmentsCsvPath, $auditCsvPath], $keepCsv);
-            return Command::FAILURE;
-        }
-
-        $this->newLine();
-        $this->info("Successfully imported {$count} enrollments!");
+        $this->info("Successfully inserted {$count} enrollments and ".($count * 7).' audit records!');
         $this->displayTableCount('course_enrollments', $tenantId, 'enrollments');
-
-        // Import audit records
-        $this->info("Importing enrollment audit records using PostgreSQL COPY...");
-
-        if (!$this->importCsvWithCopy('course_enrollment_audits', 'tenant_id, object_id, type, diffs, transaction_hash, blame_id, blame_user, created_at', $auditCsvPath)) {
-            $this->cleanupCsvFiles([$enrollmentsCsvPath, $auditCsvPath], $keepCsv);
-            return Command::FAILURE;
-        }
-
-        $this->newLine();
-        $this->info("Successfully imported " . ($count * 7) . " audit records!");
         $this->displayTableCount('course_enrollment_audits', $tenantId, 'enrollment audit records');
-
-        // Clean up CSV files
-        $this->cleanupCsvFiles([$enrollmentsCsvPath, $auditCsvPath], $keepCsv, ['Enrollments', 'Audit']);
 
         return Command::SUCCESS;
     }

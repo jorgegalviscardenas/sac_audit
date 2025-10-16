@@ -114,10 +114,11 @@ return [
         ],
 
         'operational' => [
-            'driver' => 'pgsql',
+            'driver' => env('DB_CONNECTION_OPERATIONAL', 'pgsql'),
+            'url' => env('DB_URL'),
+            'database' => env('DB_DATABASE_OPERATIONAL', 'operational'),
             'host' => env('DB_HOST_OPERATIONAL', '127.0.0.1'),
             'port' => env('DB_PORT_OPERATIONAL', '5432'),
-            'database' => env('DB_DATABASE_OPERATIONAL', 'operational'),
             'username' => env('DB_USERNAME_OPERATIONAL', 'postgres'),
             'password' => env('DB_PASSWORD_OPERATIONAL', ''),
             'charset' => env('DB_CHARSET', 'utf8'),
@@ -125,6 +126,7 @@ return [
             'prefix_indexes' => true,
             'search_path' => 'public',
             'sslmode' => 'prefer',
+            'foreign_key_constraints' => env('DB_FOREIGN_KEYS', true),
         ],
 
         'audit' => [

@@ -1,0 +1,191 @@
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - master
+      - main
+  push:
+    branches:
+      - master
+      - main
+
+jobs:
+  pr-validation:
+    name: PR Validation
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check PR title length
+        run: |
+          TITLE="${{ github.event.pull_request.title }}"
+          LENGTH=${#TITLE}
+          if [ $LENGTH -lt 10 ]; then
+            echo "❌ PR title is too short ($LENGTH chars). Minimum is 10 characters."
+            exit 1
+          elif [ $LENGTH -gt 100 ]; then
+            echo "❌ PR title is too long ($LENGTH chars). Maximum is 100 characters."
+            exit 1
+          else
+            echo "✅ PR title length is valid ($LENGTH chars)"
+          fi
+
+      - name: Check PR body length
+        run: |
+          BODY="${{ github.event.pull_request.body }}"
+          LENGTH=${#BODY}
+          if [ $LENGTH -lt 30 ]; then
+            echo "❌ PR description is too short ($LENGTH chars). Minimum is 30 characters."
+            echo "Please provide a meaningful description of your changes."
+            exit 1
+          else
+            echo "✅ PR description length is valid ($LENGTH chars)"
+          fi
+
+      - name: Check for merge conflicts
+        run: |
+          git fetch origin ${{ github.event.pull_request.base.ref }}
+          if git merge-tree $(git merge-base HEAD origin/${{ github.event.pull_request.base.ref }}) HEAD origin/${{ github.event.pull_request.base.ref }} | grep -q '<<<<<<<'; then
+            echo "❌ Merge conflicts detected. Please resolve them before merging."
+            exit 1
+          else
+            echo "✅ No merge conflicts detected"
+          fi
+
+  code-quality:
+    name: Code Quality (PHP ${{ matrix.php }})
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: true
+      matrix:
+        php: [8.4]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: dom, curl, libxml, mbstring, zip, pcntl, pdo, pdo_pgsql, bcmath, intl, gd, exif, iconv
+          tools: composer:v2
+
+      - name: Install dependencies
+        run: composer install --prefer-dist --no-interaction --no-progress
+
+      - name: Run Pint (Code Style)
+        run: ./vendor/bin/pint --test
+
+      - name: Run PHPStan (Static Analysis)
+        run: ./vendor/bin/phpstan analyse
+
+  tests:
+    name: Tests (PHP ${{ matrix.php }})
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: true
+      matrix:
+        php: [8.4]
+
+    services:
+      operational_db:
+        image: postgres:18
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: operational_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      audit_db:
+        image: postgres:18
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: audit_test
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: dom, curl, libxml, mbstring, zip, pcntl, pdo, pdo_pgsql, bcmath, intl, gd, exif, iconv
+          coverage: xdebug
+          tools: composer:v2
+
+      - name: Install dependencies
+        run: composer install --prefer-dist --no-interaction --no-progress
+
+      - name: Copy environment file
+        run: cp .env.testing .env
+
+      - name: Generate application key
+        run: php artisan key:generate
+
+      - name: Create storage directories
+        run: chmod -R 777 storage
+
+      - name: Run migrations
+        run: php artisan migrate --force
+        env:
+          DB_CONNECTION: operational
+          DB_CONNECTION_OPERATIONAL: pgsql
+          DB_HOST_OPERATIONAL: localhost
+          DB_PORT_OPERATIONAL: 5432
+          DB_DATABASE_OPERATIONAL: operational_test
+          DB_USERNAME_OPERATIONAL: postgres
+          DB_PASSWORD_OPERATIONAL: postgres
+          DB_CONNECTION_AUDIT: pgsql
+          DB_HOST_AUDIT: localhost
+          DB_PORT_AUDIT: 5433
+          DB_DATABASE_AUDIT: audit_test
+          DB_USERNAME_AUDIT: postgres
+          DB_PASSWORD_AUDIT: postgres
+
+      - name: Run tests with coverage
+        run: php artisan test --coverage --min=80
+        env:
+          DB_CONNECTION: operational
+          DB_CONNECTION_OPERATIONAL: pgsql
+          DB_HOST_OPERATIONAL: localhost
+          DB_PORT_OPERATIONAL: 5432
+          DB_DATABASE_OPERATIONAL: operational_test
+          DB_USERNAME_OPERATIONAL: postgres
+          DB_PASSWORD_OPERATIONAL: postgres
+          DB_CONNECTION_AUDIT: pgsql
+          DB_HOST_AUDIT: localhost
+          DB_PORT_AUDIT: 5433
+          DB_DATABASE_AUDIT: audit_test
+          DB_USERNAME_AUDIT: postgres
+          DB_PASSWORD_AUDIT: postgres
+
+      - name: Upload coverage reports
+        uses: codecov/codecov-action@v4
+        if: always()
+        with:
+          file: ./coverage.xml
+          fail_ci_if_error: false
