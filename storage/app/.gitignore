@@ -2,4 +2,6 @@
 !private/
 !public/
 !seeds/
+!migration_data/
+!seeder_data/
 !.gitignore

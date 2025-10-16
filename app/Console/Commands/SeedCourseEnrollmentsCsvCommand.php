@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use Database\Common\DatabaseConnections as DB_CONN;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -19,7 +20,9 @@ class SeedCourseEnrollmentsCsvCommand extends Command
                             {count=100 : The number of course enrollments to create}
                             {--tenant= : The tenant UUID (required)}
                             {--start-date= : Start date for records (Y-m-d format)}
-                            {--end-date= : End date for records (Y-m-d format)}';
+                            {--end-date= : End date for records (Y-m-d format)}
+                            {--keep-csv : Keep CSV files after import}
+                            {--audit-connection=operational : Database connection for audit tables (operational or audit)}';
 
     /**
      * The console command description.
@@ -37,6 +40,8 @@ class SeedCourseEnrollmentsCsvCommand extends Command
         $tenantId = $this->option('tenant');
         $startDate = $this->option('start-date');
         $endDate = $this->option('end-date');
+        $keepCsv = $this->option('keep-csv');
+        $auditConnection = $this->option('audit-connection');
 
         if (! $tenantId) {
             $this->error('Please provide a tenant UUID using --tenant option');
@@ -54,12 +59,12 @@ class SeedCourseEnrollmentsCsvCommand extends Command
         // Get counts first to validate data exists
         $this->info("Checking users and courses for tenant {$tenantId}...");
 
-        $userCount = DB::connection('operational')
+        $userCount = DB::connection(DB_CONN::OPERATIONAL)
             ->table('users')
             ->where('tenant_id', $tenantId)
             ->count();
 
-        $courseCount = DB::connection('operational')
+        $courseCount = DB::connection(DB_CONN::OPERATIONAL)
             ->table('courses')
             ->where('tenant_id', $tenantId)
             ->count();
@@ -82,7 +87,7 @@ class SeedCourseEnrollmentsCsvCommand extends Command
         $userSampleSize = min($userCount, 100000);
         $courseSampleSize = min($courseCount, 100000);
 
-        $userIds = DB::connection('operational')
+        $userIds = DB::connection(DB_CONN::OPERATIONAL)
             ->table('users')
             ->where('tenant_id', $tenantId)
             ->inRandomOrder()
@@ -90,7 +95,7 @@ class SeedCourseEnrollmentsCsvCommand extends Command
             ->pluck('id')
             ->toArray();
 
-        $courseIds = DB::connection('operational')
+        $courseIds = DB::connection(DB_CONN::OPERATIONAL)
             ->table('courses')
             ->where('tenant_id', $tenantId)
             ->inRandomOrder()
@@ -222,17 +227,26 @@ class SeedCourseEnrollmentsCsvCommand extends Command
                 }
             }
 
-            // Bulk insert for this period
-            if (! $this->bulkInsert('course_enrollments', ['id', 'tenant_id', 'user_id', 'course_id', 'enrolled_at', 'is_completed', 'created_at', 'updated_at'], $enrollments)) {
+            // Bulk insert for this period - direct COPY for main table
+            if (! $this->bulkInsertWithCopy('course_enrollments', ['id', 'tenant_id', 'user_id', 'course_id', 'enrolled_at', 'is_completed', 'created_at', 'updated_at'], $enrollments, $keepCsv, DB_CONN::OPERATIONAL)) {
                 $progressBar->finish();
 
                 return Command::FAILURE;
             }
 
-            if (! $this->bulkInsert('course_enrollment_audits', ['tenant_id', 'object_id', 'type', 'diffs', 'transaction_hash', 'blame_id', 'blame_user', 'created_at'], $audits)) {
-                $progressBar->finish();
+            // Bulk insert for audit - use partitioned method for audit connection
+            if ($auditConnection === DB_CONN::AUDIT) {
+                if (! $this->bulkInsertWithCopyPartitioned('course_enrollment_audits', ['tenant_id', 'object_id', 'type', 'diffs', 'transaction_hash', 'blame_id', 'blame_user', 'created_at'], $audits, $keepCsv, $auditConnection)) {
+                    $progressBar->finish();
 
-                return Command::FAILURE;
+                    return Command::FAILURE;
+                }
+            } else {
+                if (! $this->bulkInsertWithCopy('course_enrollment_audits', ['tenant_id', 'object_id', 'type', 'diffs', 'transaction_hash', 'blame_id', 'blame_user', 'created_at'], $audits, $keepCsv, $auditConnection)) {
+                    $progressBar->finish();
+
+                    return Command::FAILURE;
+                }
             }
 
             // Clear arrays to free memory
