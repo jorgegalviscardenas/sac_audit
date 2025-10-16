@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use Database\Common\DatabaseConnections as DB_CONN;
 use Illuminate\Console\Command;
 use Illuminate\Support\Str;
 
@@ -18,7 +19,9 @@ class SeedCoursesCsvCommand extends Command
                             {count=100 : The number of courses to create}
                             {--tenant= : The tenant UUID (required)}
                             {--start-date= : Start date for records (Y-m-d format)}
-                            {--end-date= : End date for records (Y-m-d format)}';
+                            {--end-date= : End date for records (Y-m-d format)}
+                            {--keep-csv : Keep CSV files after import}
+                            {--audit-connection=operational : Database connection for audit tables (operational or audit)}';
 
     /**
      * The console command description.
@@ -36,6 +39,8 @@ class SeedCoursesCsvCommand extends Command
         $tenantId = $this->option('tenant');
         $startDate = $this->option('start-date');
         $endDate = $this->option('end-date');
+        $keepCsv = $this->option('keep-csv');
+        $auditConnection = $this->option('audit-connection');
 
         if (! $tenantId) {
             $this->error('Please provide a tenant UUID using --tenant option');
@@ -158,17 +163,26 @@ class SeedCoursesCsvCommand extends Command
                 }
             }
 
-            // Bulk insert for this period
-            if (! $this->bulkInsert('courses', ['id', 'tenant_id', 'title', 'description', 'created_at', 'updated_at'], $courses)) {
+            // Bulk insert for this period - direct COPY for main table
+            if (! $this->bulkInsertWithCopy('courses', ['id', 'tenant_id', 'title', 'description', 'created_at', 'updated_at'], $courses, $keepCsv, DB_CONN::OPERATIONAL)) {
                 $progressBar->finish();
 
                 return Command::FAILURE;
             }
 
-            if (! $this->bulkInsert('course_audits', ['tenant_id', 'object_id', 'type', 'diffs', 'transaction_hash', 'blame_id', 'blame_user', 'created_at'], $audits)) {
-                $progressBar->finish();
+            // Bulk insert for audit - use partitioned method for audit connection
+            if ($auditConnection === DB_CONN::AUDIT) {
+                if (! $this->bulkInsertWithCopyPartitioned('course_audits', ['tenant_id', 'object_id', 'type', 'diffs', 'transaction_hash', 'blame_id', 'blame_user', 'created_at'], $audits, $keepCsv, $auditConnection)) {
+                    $progressBar->finish();
 
-                return Command::FAILURE;
+                    return Command::FAILURE;
+                }
+            } else {
+                if (! $this->bulkInsertWithCopy('course_audits', ['tenant_id', 'object_id', 'type', 'diffs', 'transaction_hash', 'blame_id', 'blame_user', 'created_at'], $audits, $keepCsv, $auditConnection)) {
+                    $progressBar->finish();
+
+                    return Command::FAILURE;
+                }
             }
 
             // Clear arrays to free memory

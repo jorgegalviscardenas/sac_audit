@@ -1,13 +1,13 @@
 <?php
 
-use Database\Common\MigrationCreateAuditTableTrait;
+use Database\Common\MigrationCopyDataToAuditTableTrait;
 use Illuminate\Database\Migrations\Migration;
 
 return new class() extends Migration
 {
-    use MigrationCreateAuditTableTrait;
+    use MigrationCopyDataToAuditTableTrait;
 
-    protected $connection = 'operational';
+    protected $connection = 'audit';
 
     protected function getTableName(): string
     {

@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use Carbon\Carbon;
+use Database\Common\DatabaseConnections as DB_CONN;
 use Illuminate\Support\Facades\DB;
 
 trait CsvSeedCommandTrait
@@ -103,40 +104,160 @@ trait CsvSeedCommandTrait
      */
     protected function validateTenant(string $tenantId): bool
     {
-        return DB::connection('operational')
+        return DB::connection(DB_CONN::OPERATIONAL)
             ->table('tenants')
             ->where('id', $tenantId)
             ->exists();
     }
 
     /**
-     * Bulk insert records using raw SQL for optimal performance
+     * Bulk insert records using PostgreSQL COPY FROM STDIN (direct)
+     * For non-partitioned tables only
      */
-    protected function bulkInsert(string $tableName, array $columns, array $records, int $chunkSize = 1000): bool
+    protected function bulkInsertWithCopy(string $tableName, array $columns, array $records, bool $keepCsv = false, string $connection = 'operational'): bool
     {
         try {
-            $chunks = array_chunk($records, $chunkSize);
+            // Create storage directory if it doesn't exist
+            $storagePath = storage_path('app/seeder_data');
+            if (! is_dir($storagePath)) {
+                mkdir($storagePath, 0755, true);
+            }
+
+            // Generate CSV file
+            $csvFileName = "{$tableName}_".time().'_'.uniqid().'.csv';
+            $csvPath = "{$storagePath}/{$csvFileName}";
+
+            $fp = fopen($csvPath, 'w');
+
+            foreach ($records as $record) {
+                // Escape special characters for PostgreSQL COPY
+                $escapedRecord = array_map(function ($value) {
+                    if ($value === null) {
+                        return '\\N';
+                    }
+                    // Convert booleans to PostgreSQL format
+                    if (is_bool($value)) {
+                        return $value ? 't' : 'f';
+                    }
+
+                    // Escape special characters
+                    return str_replace(["\r", "\n", "\t", '\\'], ['\\r', '\\n', '\\t', '\\\\'], $value);
+                }, $record);
+
+                fwrite($fp, implode("\t", $escapedRecord)."\n");
+            }
+
+            fclose($fp);
+
+            // Direct COPY into table
             $columnList = implode(', ', $columns);
+            $pdo = DB::connection($connection)->getPdo();
+            $pdo->pgsqlCopyFromFile(
+                "{$tableName} ({$columnList})",
+                $csvPath
+            );
 
-            foreach ($chunks as $chunk) {
-                $placeholders = [];
-                $values = [];
-
-                foreach ($chunk as $record) {
-                    $recordPlaceholders = array_fill(0, count($record), '?');
-                    $placeholders[] = '('.implode(', ', $recordPlaceholders).')';
-                    $values = array_merge($values, array_values($record));
-                }
-
-                $placeholderString = implode(', ', $placeholders);
-                $sql = "INSERT INTO {$tableName} ({$columnList}) VALUES {$placeholderString}";
-
-                DB::connection('operational')->statement($sql, $values);
+            // Clean up CSV file unless --keep-csv is specified
+            if (! $keepCsv) {
+                unlink($csvPath);
             }
 
             return true;
         } catch (\Exception $e) {
             $this->error("Failed to bulk insert into {$tableName}: ".$e->getMessage());
+
+            return false;
+        }
+    }
+
+    /**
+     * Bulk insert records using temp table approach
+     * For partitioned tables (audit tables)
+     */
+    protected function bulkInsertWithCopyPartitioned(string $tableName, array $columns, array $records, bool $keepCsv = false, string $connection = 'operational'): bool
+    {
+        try {
+            // Create storage directory if it doesn't exist
+            $storagePath = storage_path('app/seeder_data');
+            if (! is_dir($storagePath)) {
+                mkdir($storagePath, 0755, true);
+            }
+
+            // Generate CSV file
+            $csvFileName = "{$tableName}_".time().'_'.uniqid().'.csv';
+            $csvPath = "{$storagePath}/{$csvFileName}";
+
+            $fp = fopen($csvPath, 'w');
+
+            foreach ($records as $record) {
+                // Escape special characters for PostgreSQL COPY
+                $escapedRecord = array_map(function ($value) {
+                    if ($value === null) {
+                        return '\\N';
+                    }
+                    // Convert booleans to PostgreSQL format
+                    if (is_bool($value)) {
+                        return $value ? 't' : 'f';
+                    }
+
+                    // Escape special characters
+                    return str_replace(["\r", "\n", "\t", '\\'], ['\\r', '\\n', '\\t', '\\\\'], $value);
+                }, $record);
+
+                fwrite($fp, implode("\t", $escapedRecord)."\n");
+            }
+
+            fclose($fp);
+
+            $dbConnection = DB::connection($connection);
+            $pdo = $dbConnection->getPdo();
+            $tempTable = "{$tableName}_temp_".uniqid();
+            $columnList = implode(', ', $columns);
+
+            // Create temporary table
+            $columnDefinitions = [];
+            foreach ($columns as $column) {
+                // Basic type mapping - adjust based on your schema
+                $type = match ($column) {
+                    'id', 'object_id', 'tenant_id', 'user_id', 'course_id' => 'UUID',
+                    'type' => 'SMALLINT',
+                    'diffs' => 'JSONB',
+                    'transaction_hash', 'blame_id', 'blame_user', 'name', 'email', 'full_name', 'title', 'description' => 'VARCHAR(255)',
+                    'enabled', 'is_completed' => 'BOOLEAN',
+                    'created_at', 'updated_at' => 'TIMESTAMP',
+                    'enrolled_at' => 'DATE',
+                    default => 'TEXT'
+                };
+                $columnDefinitions[] = "{$column} {$type}";
+            }
+
+            $columnDefsString = implode(', ', $columnDefinitions);
+            DB::connection($connection)->statement("CREATE TEMPORARY TABLE {$tempTable} ({$columnDefsString})");
+
+            // COPY into temporary table
+            $pdo->pgsqlCopyFromFile(
+                "{$tempTable} ({$columnList})",
+                $csvPath
+            );
+
+            // Insert from temp table to partitioned table
+            DB::connection($connection)->statement("
+                INSERT INTO {$tableName} ({$columnList})
+                SELECT {$columnList}
+                FROM {$tempTable}
+            ");
+
+            // Drop temporary table
+            DB::connection($connection)->statement("DROP TABLE IF EXISTS {$tempTable}");
+
+            // Clean up CSV file unless --keep-csv is specified
+            if (! $keepCsv) {
+                unlink($csvPath);
+            }
+
+            return true;
+        } catch (\Exception $e) {
+            $this->error("Failed to bulk insert into partitioned table {$tableName}: ".$e->getMessage());
 
             return false;
         }
