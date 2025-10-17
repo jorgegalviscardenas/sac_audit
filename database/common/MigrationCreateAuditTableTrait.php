@@ -17,17 +17,19 @@ trait MigrationCreateAuditTableTrait
     protected function executeTableMigration(): void
     {
         // For operational connection, create normal table
-        $this->getConnectionDB()->create($this->getTableName(), function (Blueprint $table) {
-            $table->bigIncrements('id');
-            $table->uuid('tenant_id');
-            $table->uuid('object_id');
-            $table->smallInteger('type');
-            $table->jsonb('diffs');
-            $table->string('transaction_hash');
-            $table->string('blame_id');
-            $table->string('blame_user');
-            $table->timestamp('created_at');
-        });
+        if (! $this->getConnectionDB()->hasTable($this->getTableName())) {
+            $this->getConnectionDB()->create($this->getTableName(), function (Blueprint $table) {
+                $table->bigIncrements('id');
+                $table->uuid('tenant_id');
+                $table->uuid('object_id');
+                $table->smallInteger('type');
+                $table->jsonb('diffs');
+                $table->string('transaction_hash');
+                $table->string('blame_id');
+                $table->string('blame_user');
+                $table->timestamp('created_at');
+            });
+        }
     }
 
     /**
