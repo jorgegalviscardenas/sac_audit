@@ -17,7 +17,7 @@ return new class() extends Migration
         if (! Schema::connection($this->connection)->hasTable('sessions')) {
             Schema::connection(DB_CONN::AUDIT)->create('sessions', function (Blueprint $table) {
                 $table->string('id')->primary();
-                $table->foreignId('user_id')->nullable()->constrained('user_systems')->onDelete('cascade');
+                $table->foreignUuid('user_id')->nullable()->constrained('user_systems')->onDelete('cascade');
                 $table->string('ip_address', 45)->nullable();
                 $table->text('user_agent')->nullable();
                 $table->longText('payload');

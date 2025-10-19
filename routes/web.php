@@ -1,11 +1,12 @@
 <?php
 
+use App\Http\Controllers\AuditController;
 use App\Http\Controllers\AuthController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
-    return redirect('/dashboard');
-});
+    return redirect('/audit');
+})->name('home');
 
 // Authentication Routes
 Route::get('/login', [AuthController::class, 'showLoginForm'])->name('login');
@@ -14,7 +15,6 @@ Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
 
 // Protected Routes
 Route::middleware('auth:user_system')->group(function () {
-    Route::get('/dashboard', function () {
-        return view('home');
-    })->name('dashboard');
+    Route::get('/audit', [AuditController::class, 'index'])->name('audit');
+    Route::post('/update-tenant', [AuthController::class, 'updateTenant'])->name('update.tenant');
 });

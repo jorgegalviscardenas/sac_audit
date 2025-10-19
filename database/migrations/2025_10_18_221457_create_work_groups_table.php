@@ -14,19 +14,13 @@ return new class() extends Migration
      */
     public function up(): void
     {
-        if (! Schema::connection($this->connection)->hasTable('user_systems')) {
-            Schema::connection(DB_CONN::AUDIT)->create('user_systems', function (Blueprint $table) {
+        if (! Schema::connection($this->connection)->hasTable('work_groups')) {
+            Schema::connection($this->connection)->create('work_groups', function (Blueprint $table) {
                 $table->uuid('id')->primary();
-                $table->string('names');
-                $table->string('last_name');
-                $table->string('email')->unique();
-                $table->timestamp('email_verified_at')->nullable();
-                $table->string('password');
-                $table->rememberToken();
+                $table->string('name');
                 $table->timestamps();
             });
         }
-
     }
 
     /**
@@ -34,6 +28,6 @@ return new class() extends Migration
      */
     public function down(): void
     {
-        Schema::connection(DB_CONN::AUDIT)->dropIfExists('user_systems');
+        Schema::connection($this->connection)->dropIfExists('work_groups');
     }
 };
