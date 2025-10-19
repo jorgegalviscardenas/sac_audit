@@ -5,7 +5,7 @@ ARG UID=1000
 ARG GID=1000
 ARG USER=laravel
 
-# Instalar dependencias del sistema incluyendo Supervisor
+# Instalar dependencias del sistema incluyendo Supervisor y Node.js
 RUN apt-get update && apt-get install -y \
     git \
     curl \
@@ -21,6 +21,8 @@ RUN apt-get update && apt-get install -y \
     sudo \
     supervisor \
     telnet \
+    && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get install -y nodejs \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
