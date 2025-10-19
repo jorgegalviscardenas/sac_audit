@@ -24,8 +24,8 @@ class WorkGroup extends Model
         return $this->belongsToMany(UserSystem::class, 'user_system_work_group');
     }
 
-    public function tenantEntities(): HasMany
+    public function workGroupTenants(): HasMany
     {
-        return $this->hasMany(WorkGroupTenantEntity::class);
+        return $this->hasMany(WorkGroupTenant::class);
     }
 }

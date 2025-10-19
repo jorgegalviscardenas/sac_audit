@@ -2,9 +2,11 @@
 
 namespace Tests\Feature\Auth;
 
+use App\Models\Entity;
 use App\Models\Tenant;
 use App\Models\UserSystem;
 use App\Models\WorkGroup;
+use App\Models\WorkGroupTenant;
 use App\Models\WorkGroupTenantEntity;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
@@ -70,10 +72,22 @@ class LoginFeatureTest extends TestCase
         // Create tenant
         $tenant = Tenant::factory()->create();
 
+        // Create entity
+        $entity = Entity::create([
+            'name' => 'Test Entity',
+            'model_class' => 'App\Models\TenantAudit',
+        ]);
+
         // Link work group to tenant
-        WorkGroupTenantEntity::create([
+        $workGroupTenant = WorkGroupTenant::create([
             'work_group_id' => $workGroup->id,
             'tenant_id' => $tenant->id,
+        ]);
+
+        // Link entity to work group tenant
+        WorkGroupTenantEntity::create([
+            'work_group_tenant_id' => $workGroupTenant->id,
+            'entity_id' => $entity->id,
         ]);
 
         $response = $this->post('/login', [

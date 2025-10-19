@@ -5,10 +5,14 @@ namespace App\Services;
 use App\DTOs\CurrentTenantDTO;
 use App\Models\Tenant;
 use App\Models\UserSystem;
-use App\Models\WorkGroupTenantEntity;
+use App\Models\WorkGroupTenant;
 
 class UserSystemTenantService
 {
+    public function __construct(
+        private readonly WorkGroupTenantEntityService $workGroupTenantEntityService
+    ) {}
+
     /**
      * Get all tenants linked to a user system through work groups.
      */
@@ -23,8 +27,8 @@ class UserSystemTenantService
         // Get all work group IDs for the user
         $workGroupIds = $userSystem->workGroups()->pluck('id');
 
-        // Get all unique tenant IDs from work_group_tenant_entities
-        $tenantIds = WorkGroupTenantEntity::whereIn('work_group_id', $workGroupIds)
+        // Get all unique tenant IDs from work_group_tenants
+        $tenantIds = WorkGroupTenant::whereIn('work_group_id', $workGroupIds)
             ->distinct()
             ->pluck('tenant_id')
             ->toArray();
@@ -35,7 +39,7 @@ class UserSystemTenantService
     /**
      * Get a specific tenant for a user if they have access to it.
      */
-    public function getTenant(string $userId, string $tenantId): ?CurrentTenantDTO
+    public function getTenantWithEntities(string $userId, string $tenantId): ?CurrentTenantDTO
     {
         $userSystem = UserSystem::find($userId);
 
@@ -47,7 +51,7 @@ class UserSystemTenantService
         $workGroupIds = $userSystem->workGroups()->pluck('id');
 
         // Check if the tenant is linked to any of the user's work groups
-        $hasAccess = WorkGroupTenantEntity::whereIn('work_group_id', $workGroupIds)
+        $hasAccess = WorkGroupTenant::whereIn('work_group_id', $workGroupIds)
             ->where('tenant_id', $tenantId)
             ->exists();
 
@@ -62,7 +66,10 @@ class UserSystemTenantService
             return null;
         }
 
-        return new CurrentTenantDTO($tenant);
+        // Get entities for this user and tenant
+        $entities = $this->workGroupTenantEntityService->getEntitiesForUserAndTenant($userId, $tenantId);
+
+        return new CurrentTenantDTO($tenant, $entities);
     }
 
     /**
@@ -85,21 +92,24 @@ class UserSystemTenantService
         }
 
         // Get first tenant linked to the work group (ordered by created_at)
-        $workGroupTenantEntity = WorkGroupTenantEntity::where('work_group_id', $firstWorkGroup->id)
+        $workGroupTenant = WorkGroupTenant::where('work_group_id', $firstWorkGroup->id)
             ->orderBy('created_at')
             ->first();
 
-        if (! $workGroupTenantEntity) {
+        if (! $workGroupTenant) {
             return null;
         }
 
-        $tenant = $workGroupTenantEntity->getTenant();
+        $tenant = $workGroupTenant->getTenant();
 
         if (! $tenant) {
             return null;
         }
 
-        return new CurrentTenantDTO($tenant);
+        // Get entities for this user and tenant
+        $entities = $this->workGroupTenantEntityService->getEntitiesForUserAndTenant($userId, (string) $tenant->id);
+
+        return new CurrentTenantDTO($tenant, $entities);
     }
 
     /**

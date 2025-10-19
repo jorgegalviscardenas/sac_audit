@@ -2,9 +2,11 @@
 
 namespace Database\Seeders;
 
+use App\Models\Entity;
 use App\Models\Tenant;
 use App\Models\UserSystem;
 use App\Models\WorkGroup;
+use App\Models\WorkGroupTenant;
 use App\Models\WorkGroupTenantEntity;
 use Illuminate\Database\Seeder;
 
@@ -51,14 +53,23 @@ class WorkGroupSeeder extends Seeder
 
         // Get all tenants ordered by created_at
         $tenants = Tenant::orderBy('created_at')->get();
+        $entities = Entity::all();
 
         if ($tenants->count() > 0) {
             // Work Group 1: Link to all tenants
             foreach ($tenants as $tenant) {
-                WorkGroupTenantEntity::create([
+                $workGroupTenant1 = WorkGroupTenant::create([
                     'work_group_id' => $workGroup1->id,
                     'tenant_id' => $tenant->id,
                 ]);
+
+                // Link all entities to this work group-tenant combination
+                foreach ($entities as $entity) {
+                    WorkGroupTenantEntity::create([
+                        'work_group_tenant_id' => $workGroupTenant1->id,
+                        'entity_id' => $entity->id,
+                    ]);
+                }
             }
 
             // Work Group 2: Link to first half of tenants
@@ -66,13 +77,22 @@ class WorkGroupSeeder extends Seeder
             $firstHalfTenants = $tenants->take($halfCount);
 
             foreach ($firstHalfTenants as $tenant) {
-                WorkGroupTenantEntity::create([
+                $workGroupTenant2 = WorkGroupTenant::create([
                     'work_group_id' => $workGroup2->id,
                     'tenant_id' => $tenant->id,
                 ]);
+
+                // Link only first 3 entities to this work group-tenant combination
+                $limitedEntities = $entities->take(3);
+                foreach ($limitedEntities as $entity) {
+                    WorkGroupTenantEntity::create([
+                        'work_group_tenant_id' => $workGroupTenant2->id,
+                        'entity_id' => $entity->id,
+                    ]);
+                }
             }
 
-            $this->command->info('Linked work groups to tenants: WG1 to all tenants, WG2 to first half');
+            $this->command->info('Linked work groups to tenants with entities: WG1 to all tenants, WG2 to first half');
         } else {
             $this->command->warn('No tenants found. Please seed tenants first.');
         }

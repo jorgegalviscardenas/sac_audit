@@ -6,8 +6,9 @@ use App\DTOs\CurrentTenantDTO;
 use App\Models\Tenant;
 use App\Models\UserSystem;
 use App\Models\WorkGroup;
-use App\Models\WorkGroupTenantEntity;
+use App\Models\WorkGroupTenant;
 use App\Services\UserSystemTenantService;
+use App\Services\WorkGroupTenantEntityService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -20,7 +21,12 @@ class UserSystemTenantServiceTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->service = new UserSystemTenantService();
+
+        $workGroupTenantEntityService = $this->createMock(WorkGroupTenantEntityService::class);
+        $workGroupTenantEntityService->method('getEntitiesForUserAndTenant')
+            ->willReturn([]);
+
+        $this->service = new UserSystemTenantService($workGroupTenantEntityService);
     }
 
     public function test_get_tenants_returns_empty_array_for_non_existent_user(): void
@@ -45,7 +51,7 @@ class UserSystemTenantServiceTest extends TestCase
         $tenant = Tenant::factory()->create();
 
         // Link work group to tenant
-        WorkGroupTenantEntity::create([
+        WorkGroupTenant::create([
             'work_group_id' => $workGroup->id,
             'tenant_id' => $tenant->id,
         ]);
@@ -60,7 +66,7 @@ class UserSystemTenantServiceTest extends TestCase
     {
         $tenant = Tenant::factory()->create();
 
-        $result = $this->service->getTenant('00000000-0000-0000-0000-000000000999', $tenant->id);
+        $result = $this->service->getTenantWithEntities('00000000-0000-0000-0000-000000000999', $tenant->id);
 
         $this->assertNull($result);
     }
@@ -70,7 +76,7 @@ class UserSystemTenantServiceTest extends TestCase
         $userSystem = UserSystem::factory()->create();
         $tenant = Tenant::factory()->create();
 
-        $result = $this->service->getTenant($userSystem->id, $tenant->id);
+        $result = $this->service->getTenantWithEntities($userSystem->id, $tenant->id);
 
         $this->assertNull($result);
     }
@@ -90,15 +96,16 @@ class UserSystemTenantServiceTest extends TestCase
         $tenant = Tenant::factory()->create();
 
         // Link work group to tenant
-        WorkGroupTenantEntity::create([
+        WorkGroupTenant::create([
             'work_group_id' => $workGroup->id,
             'tenant_id' => $tenant->id,
         ]);
 
-        $result = $this->service->getTenant($userSystem->id, $tenant->id);
+        $result = $this->service->getTenantWithEntities($userSystem->id, $tenant->id);
 
         $this->assertInstanceOf(CurrentTenantDTO::class, $result);
         $this->assertEquals($tenant->id, $result->tenant->id);
+        $this->assertIsArray($result->entities);
     }
 
     public function test_get_first_tenant_returns_null_for_non_existent_user(): void
@@ -125,13 +132,13 @@ class UserSystemTenantServiceTest extends TestCase
         $tenant2 = Tenant::factory()->create();
 
         // Link work groups to tenants
-        WorkGroupTenantEntity::create([
+        WorkGroupTenant::create([
             'work_group_id' => $workGroup1->id,
             'tenant_id' => $tenant1->id,
             'created_at' => now()->subHour(),
         ]);
 
-        WorkGroupTenantEntity::create([
+        WorkGroupTenant::create([
             'work_group_id' => $workGroup1->id,
             'tenant_id' => $tenant2->id,
             'created_at' => now(),
@@ -141,5 +148,6 @@ class UserSystemTenantServiceTest extends TestCase
 
         $this->assertInstanceOf(CurrentTenantDTO::class, $result);
         $this->assertEquals($tenant1->id, $result->tenant->id);
+        $this->assertIsArray($result->entities);
     }
 }

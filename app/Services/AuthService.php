@@ -52,7 +52,7 @@ class AuthService
      */
     public function updateTenant(UserSystem $user, string $tenantId): UserSystem
     {
-        $currentTenant = $this->userSystemTenantService->getTenant((string) $user->id, $tenantId);
+        $currentTenant = $this->userSystemTenantService->getTenantWithEntities((string) $user->id, $tenantId);
 
         if ($currentTenant) {
             $this->setTenantOnSession($user, $currentTenant);

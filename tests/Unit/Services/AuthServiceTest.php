@@ -3,9 +3,11 @@
 namespace Tests\Unit\Services;
 
 use App\DTOs\CurrentTenantDTO;
+use App\Models\Entity;
 use App\Models\Tenant;
 use App\Models\UserSystem;
 use App\Models\WorkGroup;
+use App\Models\WorkGroupTenant;
 use App\Models\WorkGroupTenantEntity;
 use App\Services\AuthService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -62,10 +64,22 @@ class AuthServiceTest extends TestCase
         // Create tenant
         $tenant = Tenant::factory()->create();
 
+        // Create entity
+        $entity = Entity::create([
+            'name' => 'Test Entity',
+            'model_class' => 'App\Models\TenantAudit',
+        ]);
+
         // Link work group to tenant
-        WorkGroupTenantEntity::create([
+        $workGroupTenant = WorkGroupTenant::create([
             'work_group_id' => $workGroup->id,
             'tenant_id' => $tenant->id,
+        ]);
+
+        // Link entity to work group tenant
+        WorkGroupTenantEntity::create([
+            'work_group_tenant_id' => $workGroupTenant->id,
+            'entity_id' => $entity->id,
         ]);
 
         $result = $this->authService->login('test@example.com', 'password');
@@ -79,7 +93,7 @@ class AuthServiceTest extends TestCase
     public function test_logout_clears_current_tenant_from_session(): void
     {
         // Set up session
-        session(['current_tenant' => new CurrentTenantDTO(Tenant::factory()->create())]);
+        session(['current_tenant' => new CurrentTenantDTO(Tenant::factory()->create(), [])]);
 
         // Login a user first
         $user = UserSystem::factory()->create([
@@ -108,10 +122,22 @@ class AuthServiceTest extends TestCase
         // Create tenant
         $tenant = Tenant::factory()->create();
 
+        // Create entity
+        $entity = Entity::create([
+            'name' => 'Test Entity',
+            'model_class' => 'App\Models\TenantAudit',
+        ]);
+
         // Link work group to tenant
-        WorkGroupTenantEntity::create([
+        $workGroupTenant = WorkGroupTenant::create([
             'work_group_id' => $workGroup->id,
             'tenant_id' => $tenant->id,
+        ]);
+
+        // Link entity to work group tenant
+        WorkGroupTenantEntity::create([
+            'work_group_tenant_id' => $workGroupTenant->id,
+            'entity_id' => $entity->id,
         ]);
 
         $this->authService->updateTenant($user, $tenant->id);

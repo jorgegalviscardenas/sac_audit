@@ -2,9 +2,11 @@
 
 namespace Tests\Feature;
 
+use App\Models\Entity;
 use App\Models\Tenant;
 use App\Models\UserSystem;
 use App\Models\WorkGroup;
+use App\Models\WorkGroupTenant;
 use App\Models\WorkGroupTenantEntity;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -20,9 +22,16 @@ class TenantSelectionFeatureTest extends TestCase
         $user->workGroups()->attach($workGroup->id);
 
         $tenant = Tenant::factory()->create();
-        WorkGroupTenantEntity::create([
+        $entity = Entity::create(['name' => 'Test Entity', 'model_class' => 'App\Models\TenantAudit']);
+
+        $workGroupTenant = WorkGroupTenant::create([
             'work_group_id' => $workGroup->id,
             'tenant_id' => $tenant->id,
+        ]);
+
+        WorkGroupTenantEntity::create([
+            'work_group_tenant_id' => $workGroupTenant->id,
+            'entity_id' => $entity->id,
         ]);
 
         $response = $this->actingAs($user, 'user_system')->get('/audit');
@@ -39,15 +48,26 @@ class TenantSelectionFeatureTest extends TestCase
 
         $tenant1 = Tenant::factory()->create(['name' => 'Tenant 1']);
         $tenant2 = Tenant::factory()->create(['name' => 'Tenant 2']);
+        $entity = Entity::create(['name' => 'Test Entity', 'model_class' => 'App\Models\TenantAudit']);
 
-        WorkGroupTenantEntity::create([
+        $workGroupTenant1 = WorkGroupTenant::create([
             'work_group_id' => $workGroup->id,
             'tenant_id' => $tenant1->id,
         ]);
 
-        WorkGroupTenantEntity::create([
+        $workGroupTenant2 = WorkGroupTenant::create([
             'work_group_id' => $workGroup->id,
             'tenant_id' => $tenant2->id,
+        ]);
+
+        WorkGroupTenantEntity::create([
+            'work_group_tenant_id' => $workGroupTenant1->id,
+            'entity_id' => $entity->id,
+        ]);
+
+        WorkGroupTenantEntity::create([
+            'work_group_tenant_id' => $workGroupTenant2->id,
+            'entity_id' => $entity->id,
         ]);
 
         $response = $this->actingAs($user, 'user_system')->post('/update-tenant', [
@@ -67,10 +87,16 @@ class TenantSelectionFeatureTest extends TestCase
 
         $accessibleTenant = Tenant::factory()->create();
         $inaccessibleTenant = Tenant::factory()->create();
+        $entity = Entity::create(['name' => 'Test Entity', 'model_class' => 'App\Models\TenantAudit']);
 
-        WorkGroupTenantEntity::create([
+        $workGroupTenant = WorkGroupTenant::create([
             'work_group_id' => $workGroup->id,
             'tenant_id' => $accessibleTenant->id,
+        ]);
+
+        WorkGroupTenantEntity::create([
+            'work_group_tenant_id' => $workGroupTenant->id,
+            'entity_id' => $entity->id,
         ]);
 
         $response = $this->actingAs($user, 'user_system')->post('/update-tenant', [
@@ -89,10 +115,16 @@ class TenantSelectionFeatureTest extends TestCase
 
         $accessibleTenant = Tenant::factory()->create(['name' => 'Accessible Tenant']);
         $inaccessibleTenant = Tenant::factory()->create(['name' => 'Inaccessible Tenant']);
+        $entity = Entity::create(['name' => 'Test Entity', 'model_class' => 'App\Models\TenantAudit']);
 
-        WorkGroupTenantEntity::create([
+        $workGroupTenant = WorkGroupTenant::create([
             'work_group_id' => $workGroup->id,
             'tenant_id' => $accessibleTenant->id,
+        ]);
+
+        WorkGroupTenantEntity::create([
+            'work_group_tenant_id' => $workGroupTenant->id,
+            'entity_id' => $entity->id,
         ]);
 
         $response = $this->actingAs($user, 'user_system')->get('/audit');
