@@ -14,21 +14,17 @@ class WorkGroupTenantEntity extends Model
     protected $connection = DB_CONN::AUDIT;
 
     protected $fillable = [
-        'work_group_id',
-        'tenant_id',
+        'work_group_tenant_id',
+        'entity_id',
     ];
 
-    public function workGroup(): BelongsTo
+    public function workGroupTenant(): BelongsTo
     {
-        return $this->belongsTo(WorkGroup::class);
+        return $this->belongsTo(WorkGroupTenant::class);
     }
 
-    /**
-     * Get the tenant from operational database.
-     * Note: This is not a standard Eloquent relationship due to cross-database constraint.
-     */
-    public function getTenant(): ?Tenant
+    public function entity(): BelongsTo
     {
-        return Tenant::find($this->tenant_id);
+        return $this->belongsTo(Entity::class);
     }
 }

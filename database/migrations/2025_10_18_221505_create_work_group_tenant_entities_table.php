@@ -17,16 +17,22 @@ return new class() extends Migration
         if (! Schema::connection($this->connection)->hasTable('work_group_tenant_entities')) {
             Schema::connection($this->connection)->create('work_group_tenant_entities', function (Blueprint $table) {
                 $table->uuid('id')->primary();
-                $table->uuid('work_group_id');
-                $table->uuid('tenant_id');
+                $table->uuid('work_group_tenant_id');
+                $table->uuid('entity_id');
                 $table->timestamps();
 
-                $table->foreign('work_group_id')
+                $table->foreign('work_group_tenant_id')
                     ->references('id')
-                    ->on('work_groups')
+                    ->on('work_group_tenants')
                     ->onDelete('cascade');
 
-                $table->index(['work_group_id', 'tenant_id']);
+                $table->foreign('entity_id')
+                    ->references('id')
+                    ->on('entities')
+                    ->onDelete('cascade');
+
+                $table->unique(['work_group_tenant_id', 'entity_id']);
+                $table->index('entity_id');
             });
         }
     }

@@ -310,42 +310,40 @@ trait MigrationCopyDataToAuditTableTrait
             ->selectRaw('MIN(created_at) as min_date, MAX(created_at) as max_date')
             ->first();
 
-        if (! $dateRange || ! $dateRange->min_date) {
-            echo "No data found in operational {$tableName}, skipping partition creation.\n";
-
-            return;
-        }
-
-        $minDate = Carbon::parse($dateRange->min_date)->startOfMonth();
-        $maxDate = Carbon::parse($dateRange->max_date)->endOfMonth();
-
-        // Create partitions for each month in the data range
-        $currentPeriod = $minDate->copy();
         $partitionsCreated = 0;
 
-        while ($currentPeriod->lte($maxDate)) {
-            $periodStart = $currentPeriod->copy()->startOfMonth();
-            $periodEnd = $currentPeriod->copy()->addMonth()->startOfMonth(); // Start of next month (exclusive upper bound)
+        if ($dateRange && $dateRange->min_date) {
+            $minDate = Carbon::parse($dateRange->min_date)->startOfMonth();
+            $maxDate = Carbon::parse($dateRange->max_date)->endOfMonth();
 
-            $partitionName = "{$tableName}_{$periodStart->format('Y_m')}";
+            // Create partitions for each month in the data range
+            $currentPeriod = $minDate->copy();
 
-            $this->createPartition($tableName, $partitionName, $periodStart, $periodEnd);
-            $partitionsCreated++;
+            while ($currentPeriod->lte($maxDate)) {
+                $periodStart = $currentPeriod->copy()->startOfMonth();
+                $periodEnd = $currentPeriod->copy()->addMonth()->startOfMonth(); // Start of next month (exclusive upper bound)
 
-            $currentPeriod->addMonth();
+                $partitionName = "{$tableName}_{$periodStart->format('Y_m')}";
+
+                $this->createPartition($tableName, $partitionName, $periodStart, $periodEnd);
+                $partitionsCreated++;
+
+                $currentPeriod->addMonth();
+            }
+        } else {
+            echo "No data found in operational {$tableName}, creating partitions from current month.\n";
         }
 
-        // Create 3 additional future partitions
+        // Create 3 future partitions starting from current month
+        $currentMonth = Carbon::now()->startOfMonth();
         for ($i = 0; $i < 3; $i++) {
-            $periodStart = $currentPeriod->copy()->startOfMonth();
-            $periodEnd = $currentPeriod->copy()->addMonth()->startOfMonth(); // Start of next month (exclusive upper bound)
+            $periodStart = $currentMonth->copy()->addMonths($i)->startOfMonth();
+            $periodEnd = $periodStart->copy()->addMonth()->startOfMonth(); // Start of next month (exclusive upper bound)
 
             $partitionName = "{$tableName}_{$periodStart->format('Y_m')}";
 
             $this->createPartition($tableName, $partitionName, $periodStart, $periodEnd);
             $partitionsCreated++;
-
-            $currentPeriod->addMonth();
         }
 
         echo "Successfully created {$partitionsCreated} partitions for {$tableName} in audit database.\n";
@@ -358,11 +356,15 @@ trait MigrationCopyDataToAuditTableTrait
 
         echo "Creating partition {$partitionName} for range [{$startStr}, {$endStr})...\n";
 
-        DB::connection(DB_CONN::AUDIT)->statement("
-            CREATE TABLE {$partitionName} PARTITION OF {$tableName}
-            FOR VALUES FROM ('{$startStr}') TO ('{$endStr}')
-        ");
+        try {
+            DB::connection(DB_CONN::AUDIT)->statement("
+                CREATE TABLE IF NOT EXISTS {$partitionName} PARTITION OF {$tableName}
+                FOR VALUES FROM ('{$startStr}') TO ('{$endStr}')
+            ");
 
-        echo "Partition {$partitionName} created successfully.\n";
+            echo "Partition {$partitionName} created successfully.\n";
+        } catch (\Exception $e) {
+            echo "Partition {$partitionName} already exists or could not be created: {$e->getMessage()}\n";
+        }
     }
 }
