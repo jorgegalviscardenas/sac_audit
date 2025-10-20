@@ -20,7 +20,7 @@
 </head>
 <body>
     <nav class="navbar navbar-expand-lg navbar-dark">
-        <div class="container">
+        <div class="container-fluid px-4">
             <a class="navbar-brand fw-bold" href="{{ route('home') }}">
                 <i class="bi bi-shield-check me-2"></i>{{ config('app.name', 'SAC Audit') }}
             </a>

@@ -1,4 +1,8 @@
-@if(isset($audits) && count($audits) > 0)
+@if(!request('entity_id') && isset($currentTenant) && count($currentTenant->entities) > 0)
+<div class="alert alert-info">
+    <i class="bi bi-info-circle me-2"></i>{{ __('audit.select_entity_to_view') }}
+</div>
+@elseif(isset($audits) && count($audits) > 0)
 <div class="table-responsive">
     <table class="table table-striped table-hover">
         <thead class="table-dark">
@@ -32,7 +36,7 @@
                         <i class="bi bi-eye"></i> {{ __('audit.table.view_diffs') }}
                     </button>
                     <div class="collapse mt-2" id="diffs-{{ $audit->id }}">
-                        <pre class="bg-light p-2 rounded"><code>{{ json_encode($audit->diffs, JSON_PRETTY_PRINT) }}</code></pre>
+                        <pre class="bg-light p-2 rounded"><code>{!! $audit->getDiffsHTML() !!}</code></pre>
                     </div>
                 </td>
             </tr>
