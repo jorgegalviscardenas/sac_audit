@@ -5,7 +5,7 @@
 @section('content')
 <div class="container-fluid">
     <div class="row justify-content-center">
-        <div class="col-12 col-xl-11">
+        <div class="col-12 col-xl-12">
             <div class="card welcome-card">
                 <div class="card-body p-4">
                     <h2 class="fw-bold mb-4">

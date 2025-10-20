@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\DTOs\AuditFilterDTO;
 use App\Http\Requests\AuditFilterRequest;
+use App\Models\AuditType;
 use App\Models\Entity;
 use App\Services\AuditService;
 use App\Services\UserSystemTenantService;
@@ -18,10 +19,10 @@ class AuditController extends Controller
 
     public function index(AuditFilterRequest $request)
     {
-
         $userId = (string) Auth::guard('user_system')->id();
         $tenants = $this->userSystemTenantService->getTenants($userId);
         $currentTenant = session('current_tenant');
+        $auditTypes = AuditType::all();
 
         $audits = null;
         $entity = null;
@@ -41,6 +42,10 @@ class AuditController extends Controller
             $filters = new AuditFilterDTO(
                 tenant_id: $currentTenant->tenant->id,
                 entity_id: $entityId,
+                from: $validated['from'] ?? null,
+                to: $validated['to'] ?? null,
+                audit_type: $validated['audit_type'] ?? null,
+                object_id: $validated['object_id'] ?? null,
                 page: (int) ($request->input('page', 1)),
                 per_page: 15
             );
@@ -52,6 +57,6 @@ class AuditController extends Controller
             $audits = $this->auditService->filter($filters);
         }
 
-        return view('audit.index', compact('tenants', 'currentTenant', 'audits', 'entity'));
+        return view('audit.index', compact('tenants', 'currentTenant', 'audits', 'entity', 'auditTypes'));
     }
 }

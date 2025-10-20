@@ -103,4 +103,28 @@ class AuditServiceTest extends TestCase
         // Should return paginator even if empty (no audit records yet)
         $this->assertIsInt($result->total());
     }
+
+    public function test_filter_applies_all_filters(): void
+    {
+        $entity = Entity::create([
+            'name' => 'Tenant Audits',
+            'model_class' => 'App\Models\TenantAudit',
+        ]);
+
+        $filters = new AuditFilterDTO(
+            tenant_id: '00000000-0000-0000-0000-000000000001',
+            entity_id: $entity->id,
+            from: '2024-01-01',
+            to: '2024-12-31',
+            audit_type: 1,
+            object_id: '00000000-0000-0000-0000-000000000002',
+            page: 1,
+            per_page: 15
+        );
+
+        $result = $this->service->filter($filters);
+
+        $this->assertInstanceOf(LengthAwarePaginator::class, $result);
+        $this->assertIsInt($result->total());
+    }
 }
