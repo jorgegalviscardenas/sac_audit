@@ -17,7 +17,7 @@
         </thead>
         <tbody>
             @foreach($audits as $audit)
-            <tr>
+            <tr class="audit-record">
                 <td>{{ $audit->created_at->format('Y-m-d H:i:s') }}</td>
                 <td>
                     <span class="badge bg-{{ $audit->type === 1 ? 'success' : ($audit->type === 2 ? 'warning' : 'danger') }}">

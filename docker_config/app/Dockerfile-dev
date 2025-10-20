@@ -21,10 +21,17 @@ RUN apt-get update && apt-get install -y \
     sudo \
     supervisor \
     telnet \
+    gnupg \
     && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get install -y nodejs \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
+
+# Instalar k6
+RUN curl -L https://github.com/grafana/k6/releases/download/v0.54.0/k6-v0.54.0-linux-amd64.tar.gz -o k6.tar.gz \
+    && tar -xzf k6.tar.gz \
+    && mv k6-v0.54.0-linux-amd64/k6 /usr/local/bin/ \
+    && rm -rf k6.tar.gz k6-v0.54.0-linux-amd64
 
 # Crear grupo y usuario
 RUN groupadd -g ${GID} ${USER} \
