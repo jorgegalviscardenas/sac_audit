@@ -17,7 +17,7 @@ return new class() extends Migration
         if (! Schema::connection($this->connection)->hasTable('work_groups')) {
             Schema::connection($this->connection)->create('work_groups', function (Blueprint $table) {
                 $table->uuid('id')->primary();
-                $table->string('name');
+                $table->string('name', 100);
                 $table->timestamps();
             });
         }

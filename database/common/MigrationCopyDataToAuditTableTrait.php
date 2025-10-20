@@ -39,8 +39,8 @@ trait MigrationCopyDataToAuditTableTrait
                 type SMALLINT NOT NULL,
                 diffs JSONB NOT NULL,
                 transaction_hash VARCHAR(255) NOT NULL,
-                blame_id VARCHAR(255) NOT NULL,
-                blame_user VARCHAR(255) NOT NULL,
+                blame_id VARCHAR(36) NOT NULL,
+                blame_user VARCHAR(150) NOT NULL,
                 created_at TIMESTAMP NOT NULL,
                 PRIMARY KEY (id, created_at)
             ) PARTITION BY RANGE (created_at)

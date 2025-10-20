@@ -19,7 +19,7 @@ return new class() extends Migration
                 $table->uuid('id')->primary();
                 $table->uuid('tenant_id');
                 $table->string('email')->unique();
-                $table->string('full_name');
+                $table->string('full_name', 150);
                 $table->boolean('enabled')->default(true);
                 $table->timestamps();
 
