@@ -17,8 +17,8 @@ return new class() extends Migration
         if (! Schema::connection($this->connection)->hasTable('user_systems')) {
             Schema::connection(DB_CONN::AUDIT)->create('user_systems', function (Blueprint $table) {
                 $table->uuid('id')->primary();
-                $table->string('names');
-                $table->string('last_name');
+                $table->string('names', 80);
+                $table->string('last_name', 80);
                 $table->string('email')->unique();
                 $table->timestamp('email_verified_at')->nullable();
                 $table->string('password');

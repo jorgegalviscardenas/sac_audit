@@ -17,7 +17,7 @@ return new class() extends Migration
         if (! Schema::connection($this->connection)->hasTable('audit_types')) {
             Schema::connection($this->connection)->create('audit_types', function (Blueprint $table) {
                 $table->smallInteger('id')->primary();
-                $table->string('name');
+                $table->string('name', 100);
                 $table->timestamps();
             });
         }

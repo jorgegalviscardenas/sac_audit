@@ -24,9 +24,9 @@ trait MigrationCreateAuditTableTrait
                 $table->uuid('object_id');
                 $table->smallInteger('type');
                 $table->jsonb('diffs');
-                $table->string('transaction_hash');
-                $table->string('blame_id');
-                $table->string('blame_user');
+                $table->string('transaction_hash', 100);
+                $table->string('blame_id', 36);
+                $table->string('blame_user', 150);
                 $table->timestamp('created_at');
             });
         }

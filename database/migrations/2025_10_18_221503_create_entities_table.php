@@ -17,8 +17,8 @@ return new class() extends Migration
         if (! Schema::connection($this->connection)->hasTable('entities')) {
             Schema::connection($this->connection)->create('entities', function (Blueprint $table) {
                 $table->uuid('id')->primary();
-                $table->string('name');
-                $table->string('model_class');
+                $table->string('name', 50);
+                $table->string('model_class', 200);
                 $table->timestamps();
             });
         }
