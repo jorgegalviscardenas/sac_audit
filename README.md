@@ -1,5 +1,255 @@
 # SAC Audit
 
+Sistema de registro de auditoría de alto rendimiento para aplicaciones multi-tenant construido con Laravel. Este sistema está diseñado para manejar datos de auditoría a gran escala con soporte para bases de datos particionadas, seeding masivo optimizado y capacidades integrales de monitoreo.
+
+## Stack
+
+### Backend
+- **PHP**: 8.2+
+- **Laravel**: 12.0
+- **PostgreSQL**: 16+ (Arquitectura de base de datos dual)
+  - BD Operacional: Datos principales de la aplicación
+  - BD de Auditoría: Logs de auditoría particionados (por mes)
+
+### Frontend
+- **Tailwind CSS**: 4.0
+- **Vite**: 7.0
+- **Alpine.js**: (vía componentes Laravel Blade)
+
+### DevOps & Herramientas
+- **Docker & Docker Compose**: Entorno de desarrollo containerizado
+- **Supervisor**: Gestión de procesos para colas y workers
+- **k6**: Pruebas de carga y benchmarking de rendimiento
+- **Laravel Telescope**: Depuración y monitoreo de la aplicación
+- **Laravel Pail**: Visualización de logs en tiempo real
+- **PHPStan/Larastan**: Análisis estático
+
+### Testing & Calidad
+- **PHPUnit**: 11.5+
+- **Laravel Pint**: Estilo de código
+- **k6**: Pruebas de rendimiento y carga
+
+## Requisitos Previos
+
+- **Docker**: 20.10+
+- **Docker Compose**: 2.0+
+- **Git**: 2.30+
+
+## Instalación
+
+### 1. Clonar el repositorio
+```bash
+git clone <repository-url>
+cd sac_audit
+```
+
+### 2. Construir e iniciar los contenedores Docker
+```bash
+docker compose up -d --build
+```
+
+Esto iniciará:
+- **Contenedor App** (`buk_app`): PHP 8.2 + Composer + k6 (puerto 7400)
+- **BD Operacional** (`buk_operational_db`): PostgreSQL 16 (puerto 7500)
+- **BD de Auditoría** (`buk_audit_db`): PostgreSQL 16 (puerto 7501)
+
+### 3. Instalar dependencias de PHP
+```bash
+docker compose exec app composer install
+```
+
+### 4. Instalar dependencias de Node
+```bash
+docker compose exec app npm install
+docker compose exec app npm run build
+```
+
+### 5. Configurar el entorno
+```bash
+docker compose exec app cp .env.example .env
+docker compose exec app php artisan key:generate
+```
+
+### 6. Ejecutar migraciones de base de datos para el estado inicial (todo en una misma base de datos)
+```bash
+docker compose exec app php artisan migrate --path=database/migrations/01_initial
+```
+
+### 8. Cargar datos en las tablas de operaciones y en las de auditoria. Actualizar los tenant ids por los que corresponden
+#### Agregar 10 tenants
+```bash
+docker compose exec app php artisan seed:tenants-csv 10 --start-date=2024-10-01 --end-date=2025-10-13
+```
+
+#### Visualizar tenants creados
+```bash
+docker compose exec app php artisan tinker --execute="dump(App\Models\Tenant::all()->pluck('id', 'name'));"
+```
+#### Agregar 10.000 usuarios por tenant. O correr solo el primero.
+```bash
+docker compose exec app php artisan seed:users-csv 10000 --tenant=69f77ab5-3b0c-4280-af92-2e6969e8ec9c --start-date=2024-10-01 --end-date=2025-10-13
+
+docker compose exec app php artisan seed:users-csv 10000 --tenant=e726b14e-dcb8-4340-aadb-aa06b271271e --start-date=2024-10-01 --end-date=2025-10-13
+
+docker compose exec app php artisan seed:users-csv 10000 --tenant=47e6b03c-70fa-436a-b2a8-5e6675d59f1b --start-date=2024-10-01 --end-date=2025-10-13
+
+docker compose exec app php artisan seed:users-csv 10000 --tenant=495dd781-5f28-44c8-808b-ff60ddf9f858 --start-date=2024-10-01 --end-date=2025-10-13
+
+docker compose exec app php artisan seed:users-csv 10000 --tenant=c4f1cc09-c507-451b-8d88-f2abc565c93a --start-date=2024-10-01 --end-date=2025-10-13
+
+docker compose exec app php artisan seed:users-csv 10000 --tenant=49d27cd7-41a5-4e81-8352-7a6a4d37d8a6 --start-date=2024-10-01 --end-date=2025-10-13
+
+docker compose exec app php artisan seed:users-csv 10000 --tenant=a0ebbd91-65ad-4c7b-9430-13bfa1ac04c4 --start-date=2024-10-01 --end-date=2025-10-13
+
+docker compose exec app php artisan seed:users-csv 10000 --tenant=4f4924fd-9f77-46b0-b331-36d3e81ea2f6 --start-date=2024-10-01 --end-date=2025-10-13
+
+docker compose exec app php artisan seed:users-csv 10000 --tenant=eb1f1b2e-8a4a-4cb5-ae29-5173a721fc81 --start-date=2024-10-01 --end-date=2025-10-13
+
+docker compose exec app php artisan seed:users-csv 10000 --tenant=85787ba8-2859-45fa-86b8-dbca3ffba125 --start-date=2024-10-01 --end-date=2025-10-13
+```
+
+#### Agregar 100 cursos por tenant. O correr solo el primero.
+```bash
+docker compose exec app php artisan seed:courses-csv 100 --tenant=69f77ab5-3b0c-4280-af92-2e6969e8ec9c --start-date=2024-10-01 --end-date=2025-10-13
+
+docker compose exec app php artisan seed:courses-csv 100 --tenant=e726b14e-dcb8-4340-aadb-aa06b271271e --start-date=2024-10-01 --end-date=2025-10-13
+
+docker compose exec app php artisan seed:courses-csv 100 --tenant=47e6b03c-70fa-436a-b2a8-5e6675d59f1b --start-date=2024-10-01 --end-date=2025-10-13
+
+docker compose exec app php artisan seed:courses-csv 100 --tenant=495dd781-5f28-44c8-808b-ff60ddf9f858 --start-date=2024-10-01 --end-date=2025-10-13
+
+docker compose exec app php artisan seed:courses-csv 100 --tenant=c4f1cc09-c507-451b-8d88-f2abc565c93a --start-date=2024-10-01 --end-date=2025-10-13
+
+docker compose exec app php artisan seed:courses-csv 100 --tenant=49d27cd7-41a5-4e81-8352-7a6a4d37d8a6 --start-date=2024-10-01 --end-date=2025-10-13
+
+docker compose exec app php artisan seed:courses-csv 100 --tenant=a0ebbd91-65ad-4c7b-9430-13bfa1ac04c4 --start-date=2024-10-01 --end-date=2025-10-13
+
+docker compose exec app php artisan seed:courses-csv 100 --tenant=4f4924fd-9f77-46b0-b331-36d3e81ea2f6 --start-date=2024-10-01 --end-date=2025-10-13
+
+docker compose exec app php artisan seed:courses-csv 100 --tenant=eb1f1b2e-8a4a-4cb5-ae29-5173a721fc81 --start-date=2024-10-01 --end-date=2025-10-13
+
+docker compose exec app php artisan seed:courses-csv 100 --tenant=85787ba8-2859-45fa-86b8-dbca3ffba125 --start-date=2024-10-01 --end-date=2025-10-13
+```
+#### Agregar 10.000 inscripciones a cursos por tenant. O correr solo el primero.
+```bash
+docker compose exec app php artisan seed:course-enrollments-csv 10000 --tenant=69f77ab5-3b0c-4280-af92-2e6969e8ec9c --start-date=2024-10-01 --end-date=2025-10-13
+
+docker compose exec app php artisan seed:course-enrollments-csv 10000 --tenant=e726b14e-dcb8-4340-aadb-aa06b271271e --start-date=2024-10-01 --end-date=2025-10-13
+
+docker compose exec app php artisan seed:course-enrollments-csv 10000 --tenant=47e6b03c-70fa-436a-b2a8-5e6675d59f1b --start-date=2024-10-01 --end-date=2025-10-13
+
+docker compose exec app php artisan seed:course-enrollments-csv 10000 --tenant=495dd781-5f28-44c8-808b-ff60ddf9f858 --start-date=2024-10-01 --end-date=2025-10-13
+
+docker compose exec app php artisan seed:course-enrollments-csv 10000 --tenant=c4f1cc09-c507-451b-8d88-f2abc565c93a --start-date=2024-10-01 --end-date=2025-10-13
+
+docker compose exec app php artisan seed:course-enrollments-csv 10000 --tenant=49d27cd7-41a5-4e81-8352-7a6a4d37d8a6 --start-date=2024-10-01 --end-date=2025-10-13
+
+docker compose exec app php artisan seed:course-enrollments-csv 10000 --tenant=a0ebbd91-65ad-4c7b-9430-13bfa1ac04c4 --start-date=2024-10-01 --end-date=2025-10-13
+
+docker compose exec app php artisan seed:course-enrollments-csv 10000 --tenant=4f4924fd-9f77-46b0-b331-36d3e81ea2f6 --start-date=2024-10-01 --end-date=2025-10-13
+
+docker compose exec app php artisan seed:course-enrollments-csv 10000 --tenant=eb1f1b2e-8a4a-4cb5-ae29-5173a721fc81 --start-date=2024-10-01 --end-date=2025-10-13
+
+docker compose exec app php artisan seed:course-enrollments-csv 10000 --tenant=85787ba8-2859-45fa-86b8-dbca3ffba125 --start-date=2024-10-01 --end-date=2025-10-13
+```
+
+### 9. Ejecutar migraciones para arquitectura dual-database
+
+Migración a la nueva arquitectura (1 base de datos para operaciones y otra para auditoría):
+```bash
+docker compose exec app php artisan migrate --path=database/migrations/02_incoming_changes
+```
+
+### 10. Ejecutar seeders para usuarios del sistema y grupos de trabajo
+```bash
+# Seed de usuarios del sistema
+docker compose exec app php artisan db:seed --class=UserSystemSeeder
+
+# Seed de grupos de trabajo
+docker compose exec app php artisan db:seed --class=WorkGroupSeeder
+```
+
+### 11. Acceder a la aplicación
+- **Aplicación**: http://localhost:7400
+- **Laravel Telescope**: http://localhost:7400/telescope
+- **BD Operacional**: localhost:7500
+- **BD de Auditoría**: localhost:7501
+
+#### Usuarios del sistema disponibles
+Después de ejecutar el seeder de usuarios del sistema, puedes acceder con las siguientes credenciales:
+
+| Email | Contraseña | Nombre Completo |
+|-------|-----------|-----------------|
+| user_sac1@example.com | `password` | User SAC 1 |
+| user_sac2@example.com | `password` | User SAC 2 |
+| user_sac3@example.com | `password` | User SAC 3 |
+| user_sac4@example.com | `password` | User SAC 4 |
+| user_sac5@example.com | `password` | User SAC 5 |
+
+### 12.Checklist de Validación
+Después de la instalación, verifica que:
+
+- [ ] Ambas bases de datos están corriendo: `docker compose ps`
+- [ ] La aplicación carga en http://localhost:7400
+- [ ] Login funciona con credenciales de prueba
+- [ ] Telescope muestra requests en `/telescope`
+- [ ] Tests pasan: `docker compose exec app php artisan test`
+- [ ] k6 health check funciona: `docker compose exec app k6 run tests/k6/health-load-test.js`
+
+#### Validar arquitectura dual-database
+```bash
+# Verificar tablas operacionales
+docker compose exec operational_db psql -U postgres -d operational -c "\dt"
+
+# Verificar tablas de auditoría particionadas
+docker compose exec audit_db psql -U postgres -d audit -c "\d+ tenant_audits"
+```
+
+#### Validar particionamiento
+```bash
+# Ver particiones mensuales creadas
+docker compose exec buk_audit_db psql -U postgres -d buk_audit -c "SELECT tablename FROM pg_tables WHERE tablename LIKE 'tenant_audits_%' ORDER BY tablename;"
+```
+
+### 13. (Opcional) Ejecutar pruebas
+
+#### Pruebas unitarias y de integración
+```bash
+docker compose exec app php artisan test
+```
+
+#### Pruebas de carga con k6
+```bash
+# Prueba del endpoint /health
+docker compose exec app k6 run tests/k6/health-load-test.js
+
+# Prueba de autenticación
+docker compose exec app k6 run tests/k6/login-load-test.js
+
+# Prueba del índice de auditoría
+docker compose exec app k6 run tests/k6/audit-index-load-test.js
+
+# Prueba de filtrado por entidad
+docker compose exec app k6 run tests/k6/audit-filter-users-load-test.js
+
+# Prueba de cambio de tenant
+docker compose exec app k6 run tests/k6/tenant-switch-load-test.js
+```
+
+### 14. (Opcional) Análisis de código
+
+#### Ejecutar Laravel Pint (formateo de código)
+```bash
+docker compose exec app ./vendor/bin/pint
+```
+
+#### Ejecutar PHPStan (análisis estático)
+```bash
+docker compose exec app ./vendor/bin/phpstan analyse
+```
+
+---
+
 ## Comandos de Seeding de Base de Datos
 
 Todos los comandos de seeding usan `COPY FROM STDIN` de PostgreSQL para un rendimiento óptimo. Cada entidad genera automáticamente 7 registros de auditoría (1 CREATE + 6 UPDATE).
