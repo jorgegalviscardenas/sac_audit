@@ -2,6 +2,14 @@
 
 Sistema de registro de auditoría de alto rendimiento para aplicaciones multi-tenant construido con Laravel. Este sistema está diseñado para manejar datos de auditoría a gran escala con soporte para bases de datos particionadas, seeding masivo optimizado y capacidades integrales de monitoreo.
 
+## Screenshots
+
+### Inicio de sesión
+![Login](.github/assets/login.png)
+
+### Página principal
+![Audit Index](.github/assets/audit-index.png)
+
 ## Stack
 
 ### Backend
