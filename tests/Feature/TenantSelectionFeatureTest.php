@@ -37,7 +37,9 @@ class TenantSelectionFeatureTest extends TestCase
         $response = $this->actingAs($user, 'user_system')->get('/audit');
 
         $response->assertStatus(200);
-        $response->assertSee($tenant->name);
+        // Verify that the Select2 tenant selector is present
+        $response->assertSee('select2-tenant', false);
+        $response->assertSee('tenantSelect', false);
     }
 
     public function test_user_can_update_current_tenant(): void
@@ -127,11 +129,12 @@ class TenantSelectionFeatureTest extends TestCase
             'entity_id' => $entity->id,
         ]);
 
-        $response = $this->actingAs($user, 'user_system')->get('/audit');
+        // Test the tenant API endpoint instead of HTML rendering
+        $response = $this->actingAs($user, 'user_system')->get('/user-on-session/tenants');
 
         $response->assertStatus(200);
-        $response->assertSee('Accessible Tenant');
-        $response->assertDontSee('Inaccessible Tenant');
+        $response->assertJsonFragment(['text' => 'Accessible Tenant']);
+        $response->assertJsonMissing(['text' => 'Inaccessible Tenant']);
     }
 
     public function test_guest_cannot_access_audit_page(): void

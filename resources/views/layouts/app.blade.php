@@ -14,7 +14,7 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
 
     <!-- App Styles -->
-    @vite(['resources/css/app-layout.css'])
+    @vite(['resources/css/app-layout.css', 'resources/js/app.js'])
 
     @stack('styles')
 </head>

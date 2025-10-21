@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\AuditController;
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\TenantController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
@@ -25,4 +26,5 @@ Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
 Route::middleware('auth:user_system')->group(function () {
     Route::get('/audit', [AuditController::class, 'index'])->name('audit');
     Route::post('/update-tenant', [AuthController::class, 'updateTenant'])->name('update.tenant');
+    Route::get('/user-on-session/tenants', [TenantController::class, 'listByUser'])->name('user.session.tenants');
 });

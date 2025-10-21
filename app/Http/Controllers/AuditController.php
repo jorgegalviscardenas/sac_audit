@@ -7,20 +7,15 @@ use App\Http\Requests\AuditFilterRequest;
 use App\Models\AuditType;
 use App\Models\Entity;
 use App\Services\AuditService;
-use App\Services\UserSystemTenantService;
-use Illuminate\Support\Facades\Auth;
 
 class AuditController extends Controller
 {
     public function __construct(
-        private readonly UserSystemTenantService $userSystemTenantService,
         private readonly AuditService $auditService
     ) {}
 
     public function index(AuditFilterRequest $request)
     {
-        $userId = (string) Auth::guard('user_system')->id();
-        $tenants = $this->userSystemTenantService->getTenants($userId);
         $currentTenant = session('current_tenant');
         $auditTypes = AuditType::all();
 
@@ -57,6 +52,6 @@ class AuditController extends Controller
             $audits = $this->auditService->filter($filters);
         }
 
-        return view('audit.index', compact('tenants', 'currentTenant', 'audits', 'entity', 'auditTypes'));
+        return view('audit.index', compact('currentTenant', 'audits', 'entity', 'auditTypes'));
     }
 }

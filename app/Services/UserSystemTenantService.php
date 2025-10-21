@@ -14,29 +14,6 @@ class UserSystemTenantService
     ) {}
 
     /**
-     * Get all tenants linked to a user system through work groups.
-     */
-    public function getTenants(string $userId): array
-    {
-        $userSystem = UserSystem::find($userId);
-
-        if (! $userSystem) {
-            return [];
-        }
-
-        // Get all work group IDs for the user
-        $workGroupIds = $userSystem->workGroups()->pluck('id');
-
-        // Get all unique tenant IDs from work_group_tenants
-        $tenantIds = WorkGroupTenant::whereIn('work_group_id', $workGroupIds)
-            ->distinct()
-            ->pluck('tenant_id')
-            ->toArray();
-
-        return $this->getTenantsFromIds($tenantIds);
-    }
-
-    /**
      * Get a specific tenant for a user if they have access to it.
      */
     public function getTenantWithEntities(string $userId, string $tenantId): ?CurrentTenantDTO
@@ -113,10 +90,74 @@ class UserSystemTenantService
     }
 
     /**
-     * Get tenants from array of IDs.
+     * Get tenants from array of IDs with optional filtering and pagination.
      */
-    private function getTenantsFromIds(array $ids): array
+    private function getTenantsFromIds(array $ids, ?string $search = null, ?int $page = null, int $perPage = 10): array
     {
-        return Tenant::whereIn('id', $ids)->get()->toArray();
+        $query = Tenant::whereIn('id', $ids);
+
+        // Apply search filter
+        if ($search) {
+            $query->where('name', 'ILIKE', '%'.$search.'%');
+        }
+
+        // Apply pagination if requested
+        if ($page !== null) {
+            $offset = ($page - 1) * $perPage;
+            $query->skip($offset)->take($perPage);
+        }
+
+        return $query->get()->toArray();
+    }
+
+    /**
+     * Get total count of tenants from array of IDs with optional filtering.
+     */
+    public function getTenantsCount(array $ids, ?string $search = null): int
+    {
+        $query = Tenant::whereIn('id', $ids);
+
+        if ($search) {
+            $query->where('name', 'ILIKE', '%'.$search.'%');
+        }
+
+        return $query->count();
+    }
+
+    /**
+     * Get paginated tenants for a user with optional search.
+     */
+    public function getPaginatedTenants(string $userId, ?string $search = null, int $page = 1, int $perPage = 10): array
+    {
+        $userSystem = UserSystem::find($userId);
+
+        if (! $userSystem) {
+            return [
+                'data' => [],
+                'total' => 0,
+                'has_more' => false,
+            ];
+        }
+
+        // Get all work group IDs for the user
+        $workGroupIds = $userSystem->workGroups()->pluck('id');
+
+        // Get all unique tenant IDs from work_group_tenants
+        $tenantIds = WorkGroupTenant::whereIn('work_group_id', $workGroupIds)
+            ->distinct()
+            ->pluck('tenant_id')
+            ->toArray();
+
+        // Get total count
+        $total = $this->getTenantsCount($tenantIds, $search);
+
+        // Get paginated data
+        $tenants = $this->getTenantsFromIds($tenantIds, $search, $page, $perPage);
+
+        return [
+            'data' => $tenants,
+            'total' => $total,
+            'has_more' => ($page * $perPage) < $total,
+        ];
     }
 }
