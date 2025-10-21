@@ -1,4 +1,4 @@
-<form action="{{ route('update.tenant') }}" method="POST">
+<form action="{{ route('update.tenant') }}" method="POST" id="tenantForm">
     @csrf
     <div class="mb-4">
         <label for="tenantSelect" class="form-label fw-bold">
@@ -6,14 +6,13 @@
         </label>
         <div class="row g-2">
             <div class="col">
-                <select class="form-select form-select-lg" id="tenantSelect" name="tenant_id">
-                    <option value="">{{ __('audit.select_tenant_placeholder') }}</option>
-                    @foreach($tenants as $tenant)
-                        <option value="{{ $tenant['id'] }}"
-                            @if($currentTenant && $currentTenant->tenant->id === $tenant['id']) selected @endif>
-                            {{ $tenant['name'] }}
+                <select class="form-select form-select-lg select2-tenant" id="tenantSelect" name="tenant_id" data-placeholder="{{ __('audit.select_tenant_placeholder') }}">
+                    <option value=""></option>
+                    @if($currentTenant)
+                        <option value="{{ $currentTenant->tenant->id }}" selected>
+                            {{ $currentTenant->tenant->name }}
                         </option>
-                    @endforeach
+                    @endif
                 </select>
             </div>
             <div class="col-auto">
@@ -34,12 +33,5 @@
 @if(session('error'))
     <div class="alert alert-danger mt-3">
         <i class="bi bi-exclamation-circle me-2"></i>{{ session('error') }}
-    </div>
-@endif
-
-@if(count($tenants) === 0)
-    <div class="alert alert-warning">
-        <i class="bi bi-exclamation-triangle me-2"></i>
-        {{ __('audit.no_tenants') }}
     </div>
 @endif
